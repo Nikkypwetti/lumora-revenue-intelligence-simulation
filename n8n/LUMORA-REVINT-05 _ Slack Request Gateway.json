@@ -1,0 +1,162 @@
+{
+  "name": "LUMORA-REVINT-05 | Slack Request Gateway",
+  "nodes": [
+    {
+      "parameters": {
+        "trigger": [
+          "app_mention"
+        ],
+        "channelId": {
+          "__rl": true,
+          "value": "C0BUK581XRN",
+          "mode": "id"
+        },
+        "options": {
+          "resolveIds": false
+        }
+      },
+      "type": "n8n-nodes-base.slackTrigger",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        -160
+      ],
+      "id": "aee99ebc-3f25-495d-b100-4129cde45939",
+      "name": "INT | Slack Manager Request",
+      "webhookId": "1ae99ba7-9287-4c8e-bc20-16f81731f265",
+      "notesInFlow": true,
+      "notes": "COMPONENT ID\nINT-005\n\nNODE NAME\nINT | Slack Manager Request\n\nNODE TYPE\nSlack Trigger\n\nPURPOSE\nAccept governed Revenue Intelligence requests when the Lumora Slack app is explicitly mentioned in the trusted development reporting channel.\n\nSETTINGS\nEvent = app_mention\nChannel ID = C0BUK581XRN\nChannel = lumora-revint-reports-dev\nResolve IDs = false\n\nSECURITY BOUNDARY\n- The trigger is restricted to the trusted Lumora development reporting channel.\n- A Slack mention is intake only; it grants no KPI, SQL, database, or destination authority.\n- Slack request text is normalized before entering REVINT-01.\n- The existing deterministic governance and read-only PostgreSQL boundary remain authoritative.\n- Select an existing Slack API credential in n8n after import. Store the token and Slack signing secret only in n8n Credentials.\n\nTEST\nAfter Slack Event Subscriptions can reach the n8n HTTPS webhook, mention the Lumora app in lumora-revint-reports-dev with a supported reporting question.\n"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        96
+      ],
+      "id": "11e35a6e-1605-494b-8539-037571e6cd0e",
+      "name": "INT | Test Slack Request",
+      "notesInFlow": true,
+      "notes": "COMPONENT ID\nINT-005-T\n\nPURPOSE\nLocal development entry point for testing the Slack gateway without requiring a live Slack webhook.\n\nSECURITY BOUNDARY\nTest-only trigger. It does not contact Slack and does not bypass downstream Revenue Intelligence governance.\n"
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n  event: {\n    type: 'app_mention',\n    user: 'portfolio_manager_001',\n    text: '<@LUMORA_BOT> Show me open pipeline',\n    channel: 'C0BUK581XRN',\n    ts: String(Date.now() / 1000)\n  }\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -336,
+        96
+      ],
+      "id": "f8fbc250-bbb5-4f01-9d7c-eec5e56951df",
+      "name": "CTX | Build Simulated Slack Event",
+      "notesInFlow": true,
+      "notes": "COMPONENT ID\nCTX-005-T\n\nPURPOSE\nCreates a simulated Slack app_mention payload for local verification.\n\nSIMULATED DATA\nRequester = portfolio_manager_001\nQuestion = Show me open pipeline\nChannel ID = C0BUK581XRN\n\nSECURITY BOUNDARY\nThis node is test-only and does not call Slack or create external side effects.\n"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $json ?? {};\n\nconst event =\n  input.event &&\n  typeof input.event === 'object'\n    ? input.event\n    : input;\n\nif (\n  event.bot_id ||\n  event.subtype === 'bot_message'\n) {\n  throw new Error(\n    'Bot-generated Slack messages are not accepted as manager requests.'\n  );\n}\n\nconst rawText =\n  typeof event.text === 'string'\n    ? event.text\n    : '';\n\nconst question = rawText\n  .replace(/<@[A-Z0-9]+>/gi, ' ')\n  .replace(/\\s+/g, ' ')\n  .trim();\n\nconst requesterId =\n  typeof event.user === 'string' &&\n  event.user.trim()\n    ? event.user.trim()\n    : 'slack_requester_unknown';\n\nconst requesterName =\n  typeof event.user_name === 'string' &&\n  event.user_name.trim()\n    ? event.user_name.trim()\n    : typeof event.username === 'string' &&\n      event.username.trim()\n    ? event.username.trim()\n    : requesterId;\n\nreturn {\n  channel: 'slack',\n  requester_id: requesterId,\n  requester_name: requesterName,\n  question,\n  source: 'slack_app_mention',\n  received_at: new Date().toISOString(),\n  environment: 'development',\n  status: 'received'\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -80,
+        -64
+      ],
+      "id": "0ae1663a-272a-40d6-990e-1bda7f0d9c46",
+      "name": "CTX | Normalize Slack Request",
+      "notesInFlow": true,
+      "notes": "COMPONENT ID\nCTX-005\n\nPURPOSE\nNormalizes a Slack app_mention event into the standard Revenue Intelligence request envelope.\n\nOUTPUT\nchannel = slack\nrequester_id = Slack user ID\nrequester_name = available Slack username or requester ID\nquestion = message text with app mentions removed\nsource = slack_app_mention\nreceived_at = ISO timestamp\nenvironment = development\nstatus = received\n\nSECURITY BOUNDARY\n- Rejects bot-generated messages to reduce loop risk.\n- Removes Slack mention markup before governance.\n- Does not interpret KPI intent, authorize metrics, generate SQL, access PostgreSQL, or choose external destinations.\n- Destination authority remains in the trusted Slack configuration inside REVINT-01.\n\nTEST\nA valid request should produce the same envelope shape as Form/API intake with channel = slack.\n"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "psRtPtsN8X3izQ5j",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/psRtPtsN8X3izQ5j",
+          "cachedResultName": "LUMORA-REVINT-01 | Manager Request Orchestrator"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        176,
+        -64
+      ],
+      "id": "e761c7b0-be99-4b86-8cc6-57e26f96f36f",
+      "name": "INT | Submit Governed Slack Request",
+      "notesInFlow": true,
+      "notes": "COMPONENT ID\nINT-005-SUBMIT\n\nPURPOSE\nPasses the normalized Slack request to the existing governed LUMORA-REVINT-01 Manager Request Orchestrator.\n\nSECURITY BOUNDARY\n- This gateway does not execute SQL.\n- It does not bypass KPI validation or approved-query controls.\n- It does not select the Slack destination from manager text.\n- REVINT-01 remains the single authority for governance, read-only reporting execution, presentation, trusted destination resolution, delivery, and audit.\n\nEXPECTED RESULT\nA supported Slack request is governed by REVINT-01 and delivered through the existing trusted Slack adapter.\n"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "INT | Slack Manager Request": {
+      "main": [
+        [
+          {
+            "node": "CTX | Normalize Slack Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "INT | Test Slack Request": {
+      "main": [
+        [
+          {
+            "node": "CTX | Build Simulated Slack Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CTX | Build Simulated Slack Event": {
+      "main": [
+        [
+          {
+            "node": "CTX | Normalize Slack Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CTX | Normalize Slack Request": {
+      "main": [
+        [
+          {
+            "node": "INT | Submit Governed Slack Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "53536767-8dc6-429b-bc2e-c2b1b83b6011",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}
