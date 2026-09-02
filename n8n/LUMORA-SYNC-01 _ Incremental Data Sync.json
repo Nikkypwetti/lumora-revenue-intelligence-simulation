@@ -1,0 +1,881 @@
+{
+  "name": "LUMORA-SYNC-01 | Incremental Data Sync",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "2c2e4dfd-9fb4-475f-a49b-fd228bb9565d",
+      "name": "SYNC-001 | Manual Sync Test",
+      "notes": "COMPONENT ID\nSYNC-001\n\nNODE NAME\nSYNC-001 | Manual Sync Test\n\nNODE TYPE\nManual Trigger\n\nSTAGE\nStage 8 — Incremental Source Data Sync\n\nPURPOSE\nProvides a controlled manual entry point for development and verification of the Lumora incremental ingestion workflow.\n\nRESPONSIBILITY\nStarts one intentional sync execution during development testing.\n\nAUTHORIZED INPUT\nManual execution initiated by the workflow operator.\n\nSECURITY BOUNDARY\nThis node accepts no manager input, database query, SQL, credential, source record, or reporting request.\n\nIt does not expose a webhook or public endpoint.\n\nOUTPUT\nOne workflow execution signal for the crm.deals incremental sync path.\n\nNO AI\nNO SQL\nNO DATABASE ACCESS\nNO EXTERNAL API\nNO SECRET IN NODE NOTES\n\nSTATUS\nIn Progress — manual development trigger configured; runtime verification pending."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH new_run AS (\n    INSERT INTO ingestion.sync_runs (\n        workflow_execution_id,\n        sync_scope,\n        run_status,\n        run_metadata\n    )\n    VALUES (\n        $1,\n        'crm.deals',\n        'running',\n        jsonb_build_object(\n            'entity_key', 'crm.deals',\n            'trigger_type', 'manual',\n            'workflow_name', $2,\n            'sync_version', '1.0'\n        )\n    )\n    RETURNING\n        run_id,\n        started_at\n),\n\nnew_entity_run AS (\n    INSERT INTO ingestion.sync_run_entities (\n        run_id,\n        entity_key,\n        entity_status\n    )\n    SELECT\n        run_id,\n        'crm.deals',\n        'running'\n    FROM new_run\n    RETURNING\n        entity_run_id,\n        run_id,\n        started_at\n)\n\nSELECT\n    nr.run_id,\n    ner.entity_run_id,\n    'crm.deals'::text AS entity_key,\n    nr.started_at AS run_started_at,\n    'running'::text AS run_status,\n    'sync_run_started'::text AS workflow_stage\nFROM new_run nr\nJOIN new_entity_run ner\n    ON ner.run_id = nr.run_id;",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $execution.id,\n  $workflow.name\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        224,
+        0
+      ],
+      "id": "7e8ea2f1-dc5b-4945-b571-71a097ee609d",
+      "name": "SYNC-002 | Start Deals Sync Run",
+      "credentials": {
+        "postgres": {
+          "id": "49PPUUns3Rf0L3VK",
+          "name": "LUMORA | Ingestion RW"
+        }
+      },
+      "notes": "COMPONENT ID\nSYNC-002\n\nNODE NAME\nSYNC-002 | Start Deals Sync Run\n\nNODE TYPE\nPostgres — Execute Query\n\nSTAGE\nStage 8 — Incremental Source Data Sync\n\nPURPOSE\nCreates the authoritative audit/control records for one crm.deals incremental sync execution.\n\nRESPONSIBILITY\nCreates one row in ingestion.sync_runs.\n\nCreates one related row in ingestion.sync_run_entities for crm.deals.\n\nReturns the generated run_id and entity_run_id required by downstream checkpoint and sync controls.\n\nAUTHORIZED INPUT\nn8n execution ID.\nn8n workflow name.\n\nDATABASE CREDENTIAL\nLUMORA | Ingestion RW\n\nDATABASE\nlumora_revenue_simulation\n\nAUTHORIZED DATABASE SCOPE\ningestion.sync_runs\ningestion.sync_run_entities\n\nSQL CONTRACT\nUses parameterized values for runtime identity.\n\nsync_scope is deterministically fixed to crm.deals.\n\nInitial run_status = running.\nInitial entity_status = running.\n\nSECURITY BOUNDARY\nThe node cannot access the source-system database through this credential.\n\nThe ingestion role cannot access reporting.fact_deals or governance query templates.\n\nNo manager-controlled SQL, schema, table, or credential is accepted.\n\nOUTPUT\nrun_id\nentity_run_id\nentity_key\nrun_started_at\nrun_status\nworkflow_stage = sync_run_started\n\nFAILURE BEHAVIOR\nA database failure stops the workflow before source extraction and must not advance any checkpoint.\n\nNO AI\nNO ARBITRARY SQL\nNO SOURCE DATABASE WRITE\nNO REPORTING DATABASE ACCESS\nNO SECRET IN NODE NOTES\n\nSTATUS\nIn Progress — configuration complete; runtime verification pending."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n\n    cp.entity_key,\n    cp.source_database,\n    cp.source_schema,\n    cp.source_table,\n\n    cp.target_schema,\n    cp.target_table,\n\n    cp.primary_key_column,\n    cp.watermark_column,\n\n    cp.last_watermark::text AS last_watermark,\n    cp.last_primary_key,\n\n    cp.checkpoint_status,\n\n    (\n        cp.entity_key IS NOT NULL\n        AND cp.checkpoint_status = 'ready'\n        AND cp.last_watermark IS NOT NULL\n        AND cp.last_primary_key IS NOT NULL\n    ) AS checkpoint_ready,\n\n    'checkpoint_loaded'::text AS workflow_stage\n\nFROM (\n    SELECT\n        1 AS anchor\n) base\n\nLEFT JOIN ingestion.sync_checkpoints cp\n    ON cp.entity_key = 'crm.deals';",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $json.run_id,\n  $json.entity_run_id\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        448,
+        0
+      ],
+      "id": "d9547729-fbac-4b21-85a3-a09ac2784d37",
+      "name": "SYNC-003 | Load Deals Checkpoint",
+      "credentials": {
+        "postgres": {
+          "id": "49PPUUns3Rf0L3VK",
+          "name": "LUMORA | Ingestion RW"
+        }
+      },
+      "notes": "COMPONENT ID\nSYNC-003\n\nNODE NAME\nSYNC-003 | Load Deals Checkpoint\n\nNODE TYPE\nPostgres — Execute Query\n\nSTAGE\nStage 8 — Incremental Source Data Sync\n\nPURPOSE\nLoads the last successfully committed composite cursor for crm.deals.\n\nRESPONSIBILITY\nReads the controlled ingestion checkpoint.\n\nCarries run_id and entity_run_id forward.\n\nDetermines whether the checkpoint is safe and ready for extraction.\n\nAUTHORIZED INPUT\nrun_id\nentity_run_id\n\nDATABASE CREDENTIAL\nLUMORA | Ingestion RW\n\nDATABASE\nlumora_revenue_simulation\n\nAUTHORIZED DATABASE SCOPE\ningestion.sync_checkpoints\n\nCHECKPOINT CONTRACT\nentity_key = crm.deals\nwatermark_column = source_updated_at\nprimary-key tie-breaker = deal_id\n\nExpected composite cursor:\nlast_watermark\nlast_primary_key\n\nVALIDATION\ncheckpoint_ready = true only when:\ncheckpoint exists\ncheckpoint_status = ready\nlast_watermark is present\nlast_primary_key is present\n\nSECURITY BOUNDARY\nThe checkpoint table controls where incremental extraction begins.\n\nNo input may override source schema, source table, target table, primary-key column, or watermark column.\n\nThose values are read from the governed checkpoint record.\n\nOUTPUT\nrun_id\nentity_run_id\nentity_key\nsource/target metadata\nlast_watermark\nlast_primary_key\ncheckpoint_status\ncheckpoint_ready\nworkflow_stage = checkpoint_loaded\n\nFAILURE BEHAVIOR\nA missing or invalid checkpoint must fail closed before source extraction.\n\nThe checkpoint is never advanced by this node.\n\nNO AI\nNO ARBITRARY SQL\nNO SOURCE DATABASE WRITE\nNO CHECKPOINT UPDATE\nNO SECRET IN NODE NOTES\n\nTIMESTAMP PRECISION CONTRACT\nThe PostgreSQL checkpoint watermark is returned to n8n as TEXT rather than a JavaScript timestamp.\n\nThis preserves PostgreSQL microsecond precision across the n8n execution boundary.\n\nDownstream SQL casts the exact string back to TIMESTAMPTZ when performing database comparisons.\n\nThis prevents cursor truncation and repeated extraction of already-processed source records.\n\nSTATUS\nIn Progress — configuration complete; runtime verification pending."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "6cf8176c-74df-4650-b426-d7a484444655",
+              "leftValue": "={{ $json.checkpoint_ready }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        672,
+        0
+      ],
+      "id": "e0db918a-26d1-4068-a31c-b6ca03203e64",
+      "name": "SYNC-004 | Checkpoint Ready?",
+      "notes": "COMPONENT ID\nSYNC-004\n\nNODE NAME\nSYNC-004 | Checkpoint Ready?\n\nNODE TYPE\nIF\n\nSTAGE\nStage 8 — Incremental Source Data Sync\n\nPURPOSE\nCreates a fail-closed boundary before source-system extraction.\n\nRESPONSIBILITY\nAllows extraction only when the governed crm.deals checkpoint has been loaded and validated as ready.\n\nAUTHORIZED INPUT\ncheckpoint_ready\n\nVALIDATION CONTRACT\nTRUE:\ncheckpoint_ready = true\n\nFALSE:\ncheckpoint missing, invalid, incomplete, or not in ready state.\n\nSECURITY BOUNDARY\nSource extraction cannot begin from an unknown or unapproved cursor.\n\nThis node does not accept a manually supplied timestamp or deal ID.\n\nOUTPUT\nTRUE → approved source-extraction path.\nFALSE → controlled sync-failure path to be connected in the next build batch.\n\nFAILURE BEHAVIOR\nFalse must never fall through to source extraction.\n\nNO AI\nNO SQL\nNO DATABASE ACCESS\nNO SECRET IN NODE NOTES\n\nSTATUS\nIn Progress — checkpoint gate configured; runtime verification pending."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH claimed AS (\n    UPDATE ingestion.sync_checkpoints sc\n    SET\n        checkpoint_status = 'running',\n        claimed_run_id = $1::BIGINT,\n        updated_at = NOW()\n    WHERE sc.entity_key = 'crm.deals'\n      AND sc.checkpoint_status = 'ready'\n      AND sc.claimed_run_id IS NULL\n      AND sc.last_watermark = $3::TIMESTAMPTZ\n      AND sc.last_primary_key = $4::TEXT\n\n      -- The run claiming this checkpoint must still be active.\n      AND EXISTS (\n          SELECT 1\n          FROM ingestion.sync_runs sr\n          WHERE sr.run_id = $1::BIGINT\n            AND sr.run_status = 'running'\n      )\n\n      -- The entity-run claiming this checkpoint must belong\n      -- to the same run and still be active.\n      AND EXISTS (\n          SELECT 1\n          FROM ingestion.sync_run_entities sre\n          WHERE sre.entity_run_id = $2::BIGINT\n            AND sre.run_id = $1::BIGINT\n            AND sre.entity_key = 'crm.deals'\n            AND sre.entity_status = 'running'\n      )\n\n    RETURNING\n        sc.entity_key,\n        sc.source_database,\n        sc.source_schema,\n        sc.source_table,\n        sc.target_schema,\n        sc.target_table,\n        sc.primary_key_column,\n        sc.watermark_column,\n        sc.last_watermark::text AS last_watermark,\n        sc.last_primary_key,\n        sc.checkpoint_status,\n        sc.claimed_run_id\n)\n\nSELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n\n    COALESCE(\n        c.entity_key,\n        'crm.deals'\n    ) AS entity_key,\n\n    c.source_database,\n    c.source_schema,\n    c.source_table,\n    c.target_schema,\n    c.target_table,\n    c.primary_key_column,\n    c.watermark_column,\n\n    c.last_watermark,\n    c.last_primary_key,\n\n    COALESCE(\n        c.checkpoint_status,\n        'not_claimed'\n    ) AS checkpoint_status,\n\n    c.claimed_run_id,\n\n    (c.entity_key IS NOT NULL)\n        AS checkpoint_claimed,\n\n    'checkpoint_claim_attempted'::text\n        AS workflow_stage\n\nFROM (SELECT 1 AS anchor) a\nLEFT JOIN claimed c\n    ON TRUE;",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $json.run_id,\n  $json.entity_run_id,\n  $json.last_watermark,\n  $json.last_primary_key\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        896,
+        -96
+      ],
+      "id": "78c879bb-b548-41c4-83c8-cc173bdfc9f5",
+      "name": "SYNC-005 | Claim Deals Checkpoint",
+      "credentials": {
+        "postgres": {
+          "id": "49PPUUns3Rf0L3VK",
+          "name": "LUMORA | Ingestion RW"
+        }
+      },
+      "notes": "COMPONENT ID\nSYNC-005\n\nNODE NAME\nSYNC-005 | Claim Deals Checkpoint\n\nNODE TYPE\nPostgres — Execute Query\n\nSTAGE\nStage 8 — Incremental Source Data Sync\n\nPURPOSE\nAtomically claims the governed crm.deals checkpoint before source extraction.\n\nRESPONSIBILITY\nChanges checkpoint_status from ready to running only when the checkpoint still matches the cursor loaded earlier.\n\nPrevents concurrent sync executions from processing the same checkpoint.\n\nAUTHORIZED INPUT\nrun_id\nentity_run_id\nlast_watermark\nlast_primary_key\n\nDATABASE CREDENTIAL\nLUMORA | Ingestion RW\n\nDATABASE\nlumora_revenue_simulation\n\nAUTHORIZED DATABASE SCOPE\ningestion.sync_checkpoints\n\nCONCURRENCY CONTRACT\nThe checkpoint can be claimed only when:\nentity_key = crm.deals\ncheckpoint_status = ready\nlast_watermark still matches\nlast_primary_key still matches\n\nA changed or already-running checkpoint cannot be claimed.\n\nSECURITY BOUNDARY\nSource schema and table are not supplied by manager input.\n\nNo source-system write access exists through this credential.\n\nNo reporting or governance access is authorized.\n\nOUTPUT\nrun_id\nentity_run_id\ngoverned source/target metadata\nlast_watermark\nlast_primary_key\ncheckpoint_status\ncheckpoint_claimed\nworkflow_stage\n\nFAILURE BEHAVIOR\nIf the checkpoint cannot be claimed, checkpoint_claimed = false and source extraction must not run.\n\nNO AI\nNO ARBITRARY SQL\nNO SOURCE DATABASE WRITE\nNO REPORTING ACCESS\nNO SECRET IN NODE NOTES\n\nSTATUS\nCHECKPOINT OWNERSHIP HARDENING — STAGE 8F\n\nCheckpoint claims are explicitly owned by run_id.\n\nClaim contract:\nready + claimed_run_id NULL\n→ running + claimed_run_id = current run_id\n\nCompletion contract:\nrunning + claimed_run_id = current run_id\n→ ready + claimed_run_id NULL\n\nA run may release or advance only the checkpoint it owns.\n\nSuccess paths also verify:\n- run_id is still running\n- entity_run_id belongs to run_id\n- entity status is still running\n- original composite cursor still matches\n\nPositive checkpoint advancement additionally requires the candidate composite cursor to be strictly greater than the current cursor.\n\nNO cross-run checkpoint release.\nNO backward cursor movement.\nNO AI authorization.\nNO arbitrary SQL.\nNO secrets in Notes."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c56cbc97-1da5-4c59-8325-08e335898b52",
+              "leftValue": "={{ $json.checkpoint_claimed }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1120,
+        -96
+      ],
+      "id": "b91c4cbc-2e1a-4c74-a39a-0b1d4fdea429",
+      "name": "SYNC-006 | Checkpoint Claimed?",
+      "notes": "COMPONENT ID\nSYNC-006\n\nNODE NAME\nSYNC-006 | Checkpoint Claimed?\n\nNODE TYPE\nIF\n\nSTAGE\nStage 8 — Incremental Source Data Sync\n\nPURPOSE\nPrevents source extraction unless the checkpoint was atomically claimed.\n\nAUTHORIZED INPUT\ncheckpoint_claimed\n\nVALIDATION CONTRACT\nTRUE → checkpoint_claimed = true\nFALSE → claim failed or checkpoint was already changed/claimed\n\nSECURITY BOUNDARY\nNo source query may execute from the FALSE path.\n\nOUTPUT\nTRUE → governed source extraction.\nFALSE → controlled failure path.\n\nNO AI\nNO SQL\nNO DATABASE ACCESS\nNO SECRET IN NODE NOTES\n\nSTATUS\nIn Progress — runtime verification pending."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH changed AS (\n    SELECT\n        deal_id,\n        account_id,\n        primary_contact_id,\n        owner_rep_id,\n        deal_name,\n        product_tier,\n        stage,\n        outcome,\n        amount,\n        probability,\n        currency,\n        lead_source,\n        created_at,\n        qualified_at,\n        opportunity_at,\n        proposal_sent_at,\n        expected_close_date,\n        closed_at,\n        last_activity_at,\n        next_activity_at,\n        first_response_at,\n        sla_due_at,\n        lost_reason,\n        source_updated_at\n    FROM crm.deals\n    WHERE\n        source_updated_at > $3::TIMESTAMPTZ\n\n        OR (\n            source_updated_at = $3::TIMESTAMPTZ\n            AND deal_id > $4::TEXT\n        )\n\n    ORDER BY\n        source_updated_at,\n        deal_id\n\n    LIMIT 100\n),\n\naggregated AS (\n    SELECT\n        COUNT(*)::INTEGER\n            AS rows_extracted,\n\n        COALESCE(\n            jsonb_agg(\n                to_jsonb(c)\n                ORDER BY\n                    c.source_updated_at,\n                    c.deal_id\n            ),\n            '[]'::JSONB\n        ) AS changed_deals\n\n    FROM changed c\n),\n\nlast_row AS (\n    SELECT\n        source_updated_at,\n        deal_id\n    FROM changed\n    ORDER BY\n        source_updated_at DESC,\n        deal_id DESC\n    LIMIT 1\n)\n\nSELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n\n    'crm.deals'::text\n        AS entity_key,\n\n     $3::TEXT\n    AS start_watermark,\n\n    $4::TEXT\n        AS start_primary_key,\n\n    a.rows_extracted,\n    a.changed_deals,\n\n     lr.source_updated_at::text\n    AS candidate_end_watermark,\n\n    lr.deal_id\n        AS candidate_end_primary_key,\n\n    (a.rows_extracted > 0)\n        AS changes_found,\n\n    'source_extraction_complete'::text\n        AS workflow_stage\n\nFROM aggregated a\n\nLEFT JOIN last_row lr\n    ON TRUE;",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $json.run_id,\n  $json.entity_run_id,\n  $json.last_watermark,\n  $json.last_primary_key\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1344,
+        -192
+      ],
+      "id": "2c701418-4e6c-48dd-a858-c1254376f603",
+      "name": "SYNC-007 | Extract Changed Deals",
+      "credentials": {
+        "postgres": {
+          "id": "g17VKfn4L7IiJ4bk",
+          "name": "LUMORA | Source RO"
+        }
+      },
+      "notes": "COMPONENT ID\nSYNC-007\n\nNODE NAME\nSYNC-007 | Extract Changed Deals\n\nNODE TYPE\nPostgres — Execute Query\n\nSTAGE\nStage 8 — Incremental Source Data Sync\n\nPURPOSE\nReads only crm.deals records newer than the committed composite checkpoint.\n\nDATABASE CREDENTIAL\nLUMORA | Source RO\n\nDATABASE\nlumora_source_systems\n\nAUTHORIZED DATABASE SCOPE\nSELECT only on crm.deals\n\nINCREMENTAL CONTRACT\nCursor =\n(source_updated_at, deal_id)\n\nExtraction predicate:\nsource_updated_at > last_watermark\nOR\nsource_updated_at = last_watermark\nAND deal_id > last_primary_key\n\nOrdering:\nsource_updated_at ASC\ndeal_id ASC\n\nBatch limit:\n100 records\n\nRESPONSIBILITY\nReturns changed source deals without modifying the source system.\n\nProduces a candidate ending cursor but does not advance the authoritative checkpoint.\n\nAUTHORIZED INPUT\nrun_id\nentity_run_id\nlast_watermark\nlast_primary_key\n\nSECURITY BOUNDARY\nThe SQL uses the fixed approved source table crm.deals.\n\nNo runtime value can choose database, schema, table, SQL statement, or credential.\n\nThe Source RO credential cannot insert, update, or delete source records.\n\nOUTPUT\nrun_id\nentity_run_id\nentity_key\nstart_watermark\nstart_primary_key\nrows_extracted\nchanged_deals\ncandidate_end_watermark\ncandidate_end_primary_key\nchanges_found\nworkflow_stage\n\nTIMESTAMP PRECISION CONTRACT\nThe candidate ending watermark is serialized by PostgreSQL as TEXT before crossing into n8n.\n\nThis preserves microseconds such as:\n2026-08-31 11:55:52.592266+00\n\nThe checkpoint cursor must never depend on JavaScript Date millisecond precision.\n\nFAILURE BEHAVIOR\nA source read failure stops execution.\n\nThe target raw table and authoritative checkpoint remain unchanged.\n\nNO AI\nNO ARBITRARY SQL\nNO SOURCE WRITE\nNO TARGET DATABASE ACCESS\nNO SECRET IN NODE NOTES\n\nSTATUS\nIn Progress — runtime verification pending."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "85758b47-78e4-42a3-8bf9-7910b76da621",
+              "leftValue": "={{ $json.changes_found }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1568,
+        -192
+      ],
+      "id": "f8870458-a97a-49f3-b2c5-71d67e59d5e4",
+      "name": "SYNC-008 | Changes Found?",
+      "notes": "COMPONENT ID\nSYNC-008\n\nNODE NAME\nSYNC-008 | Changes Found?\n\nNODE TYPE\nIF\n\nSTAGE\nStage 8 — Incremental Source Data Sync\n\nPURPOSE\nSeparates changed-record processing from the valid no-change completion path.\n\nVALIDATION CONTRACT\nTRUE:\none or more source deals were extracted.\n\nFALSE:\nzero records were extracted.\n\nSECURITY BOUNDARY\nA zero-row sync is a valid successful outcome and must not advance the checkpoint.\n\nOUTPUT\nTRUE → raw deal upsert path.\nFALSE → no-change completion path.\n\nNO AI\nNO SQL\nNO DATABASE ACCESS\nNO SECRET IN NODE NOTES\n\nSTATUS\nIn Progress — runtime verification pending."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH released AS (\n    UPDATE ingestion.sync_checkpoints sc\n    SET\n        checkpoint_status = 'ready',\n        claimed_run_id = NULL,\n        last_synced_at = NOW(),\n        updated_at = NOW()\n    WHERE sc.entity_key = 'crm.deals'\n      AND sc.checkpoint_status = 'running'\n\n      -- Ownership guard:\n      -- only the run that owns this checkpoint may release it.\n      AND sc.claimed_run_id = $1::BIGINT\n\n      -- Cursor must still be exactly the cursor this run claimed.\n      AND sc.last_watermark = $3::TIMESTAMPTZ\n      AND sc.last_primary_key = $4::TEXT\n\n      -- Control rows must still describe this active run.\n      AND EXISTS (\n          SELECT 1\n          FROM ingestion.sync_runs sr\n          WHERE sr.run_id = $1::BIGINT\n            AND sr.run_status = 'running'\n      )\n\n      AND EXISTS (\n          SELECT 1\n          FROM ingestion.sync_run_entities sre\n          WHERE sre.entity_run_id = $2::BIGINT\n            AND sre.run_id = $1::BIGINT\n            AND sre.entity_key = 'crm.deals'\n            AND sre.entity_status = 'running'\n      )\n\n    RETURNING\n        sc.entity_key,\n        sc.last_watermark::text AS last_watermark,\n        sc.last_primary_key\n),\n\nentity_done AS (\n    UPDATE ingestion.sync_run_entities\n    SET\n        start_watermark = $3::TIMESTAMPTZ,\n        start_primary_key = $4::TEXT,\n\n        end_watermark = $3::TIMESTAMPTZ,\n        end_primary_key = $4::TEXT,\n\n        rows_extracted = 0,\n        rows_upserted = 0,\n\n        entity_status = 'succeeded',\n        error_message = NULL,\n        completed_at = NOW()\n\n    WHERE entity_run_id = $2::BIGINT\n      AND run_id = $1::BIGINT\n      AND entity_key = 'crm.deals'\n      AND entity_status = 'running'\n\n      AND EXISTS (\n          SELECT 1\n          FROM released\n      )\n\n    RETURNING entity_run_id\n),\n\nrun_done AS (\n    UPDATE ingestion.sync_runs\n    SET\n        run_status = 'succeeded',\n        completed_at = NOW(),\n\n        rows_extracted = 0,\n        rows_upserted = 0,\n        rows_rejected = 0,\n\n        error_message = NULL,\n\n        run_metadata =\n            run_metadata ||\n            jsonb_build_object(\n                'result',\n                'no_changes',\n\n                'checkpoint_advanced',\n                false,\n\n                'checkpoint_released',\n                true\n            )\n\n    WHERE run_id = $1::BIGINT\n      AND run_status = 'running'\n\n      AND EXISTS (\n          SELECT 1\n          FROM entity_done\n      )\n\n    RETURNING run_id\n)\n\nSELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n\n    EXISTS (\n        SELECT 1 FROM released\n    ) AS checkpoint_released,\n\n    EXISTS (\n        SELECT 1 FROM entity_done\n    ) AS entity_completed,\n\n    EXISTS (\n        SELECT 1 FROM run_done\n    ) AS run_completed,\n\n    false AS checkpoint_advanced,\n\n    ($3::TIMESTAMPTZ)::text AS retained_watermark,\n    $4::TEXT AS retained_primary_key,\n\n    'no_change_sync_completed'::text\n        AS workflow_stage;",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $json.run_id,\n  $json.entity_run_id,\n  $json.start_watermark,\n  $json.start_primary_key\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1792,
+        -96
+      ],
+      "id": "37f74eb0-3ca2-496e-822d-5f3e4b899567",
+      "name": "SYNC-009 | Complete No-Change Run",
+      "credentials": {
+        "postgres": {
+          "id": "49PPUUns3Rf0L3VK",
+          "name": "LUMORA | Ingestion RW"
+        }
+      },
+      "notes": "COMPONENT ID\nSYNC-009\n\nNODE NAME\nSYNC-009 | Complete No-Change Run\n\nNODE TYPE\nPostgres — Execute Query\n\nSTAGE\nStage 8 — Incremental Source Data Sync\n\nPURPOSE\nCompletes a valid sync execution when no new or changed crm.deals records exist.\n\nRESPONSIBILITY\nReleases the claimed checkpoint back to ready.\n\nKeeps the composite cursor unchanged.\n\nMarks the entity run succeeded.\n\nMarks the overall sync run succeeded.\n\nRecords zero extracted and zero upserted rows.\n\nDATABASE CREDENTIAL\nLUMORA | Ingestion RW\n\nDATABASE\nlumora_revenue_simulation\n\nCHECKPOINT CONTRACT\nThe checkpoint is released only when it still matches the cursor that was claimed.\n\nThe watermark and primary-key cursor are not advanced.\n\nSECURITY BOUNDARY\nA no-change execution cannot modify raw deal records.\n\nNo reporting or governance access is permitted.\n\nOUTPUT\ncheckpoint_released\nentity_completed\nrun_completed\ncheckpoint_advanced = false\nworkflow_stage = no_change_sync_completed\n\nFAILURE BEHAVIOR\nIf the claimed checkpoint cannot be safely released, downstream verification must treat the completion as failed.\n\nNO AI\nNO ARBITRARY SQL\nNO SOURCE ACCESS\nNO RAW DATA WRITE\nNO REPORTING ACCESS\nNO SECRET IN NODE NOTES\n\nSTATUS\nCHECKPOINT OWNERSHIP HARDENING — STAGE 8F\n\nCheckpoint claims are explicitly owned by run_id.\n\nClaim contract:\nready + claimed_run_id NULL\n→ running + claimed_run_id = current run_id\n\nCompletion contract:\nrunning + claimed_run_id = current run_id\n→ ready + claimed_run_id NULL\n\nA run may release or advance only the checkpoint it owns.\n\nSuccess paths also verify:\n- run_id is still running\n- entity_run_id belongs to run_id\n- entity status is still running\n- original composite cursor still matches\n\nPositive checkpoint advancement additionally requires the candidate composite cursor to be strictly greater than the current cursor.\n\nNO cross-run checkpoint release.\nNO backward cursor movement.\nNO AI authorization.\nNO arbitrary SQL.\nNO secrets in Notes."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH payload AS (\n    SELECT *\n    FROM jsonb_populate_recordset(\n        NULL::raw_crm.deals,\n        $5::JSONB\n    )\n),\n\nupserted AS (\n    INSERT INTO raw_crm.deals (\n        deal_id,\n        account_id,\n        primary_contact_id,\n        owner_rep_id,\n        deal_name,\n        product_tier,\n        stage,\n        outcome,\n        amount,\n        probability,\n        currency,\n        lead_source,\n        created_at,\n        qualified_at,\n        opportunity_at,\n        proposal_sent_at,\n        expected_close_date,\n        closed_at,\n        last_activity_at,\n        next_activity_at,\n        first_response_at,\n        sla_due_at,\n        lost_reason,\n        source_updated_at,\n        ingested_at\n    )\n\n    SELECT\n        deal_id,\n        account_id,\n        primary_contact_id,\n        owner_rep_id,\n        deal_name,\n        product_tier,\n        stage,\n        outcome,\n        amount,\n        probability,\n        currency,\n        lead_source,\n        created_at,\n        qualified_at,\n        opportunity_at,\n        proposal_sent_at,\n        expected_close_date,\n        closed_at,\n        last_activity_at,\n        next_activity_at,\n        first_response_at,\n        sla_due_at,\n        lost_reason,\n        source_updated_at,\n        NOW()\n    FROM payload\n\n    ON CONFLICT (deal_id)\n    DO UPDATE SET\n        account_id          = EXCLUDED.account_id,\n        primary_contact_id  = EXCLUDED.primary_contact_id,\n        owner_rep_id        = EXCLUDED.owner_rep_id,\n        deal_name           = EXCLUDED.deal_name,\n        product_tier        = EXCLUDED.product_tier,\n        stage               = EXCLUDED.stage,\n        outcome             = EXCLUDED.outcome,\n        amount              = EXCLUDED.amount,\n        probability         = EXCLUDED.probability,\n        currency            = EXCLUDED.currency,\n        lead_source         = EXCLUDED.lead_source,\n        created_at          = EXCLUDED.created_at,\n        qualified_at        = EXCLUDED.qualified_at,\n        opportunity_at      = EXCLUDED.opportunity_at,\n        proposal_sent_at    = EXCLUDED.proposal_sent_at,\n        expected_close_date = EXCLUDED.expected_close_date,\n        closed_at           = EXCLUDED.closed_at,\n        last_activity_at    = EXCLUDED.last_activity_at,\n        next_activity_at    = EXCLUDED.next_activity_at,\n        first_response_at   = EXCLUDED.first_response_at,\n        sla_due_at          = EXCLUDED.sla_due_at,\n        lost_reason         = EXCLUDED.lost_reason,\n        source_updated_at   = EXCLUDED.source_updated_at,\n        ingested_at         = NOW()\n\n    RETURNING\n        deal_id,\n        source_updated_at\n),\n\nstats AS (\n    SELECT\n        COUNT(*)::INTEGER AS rows_upserted\n    FROM upserted\n),\n\nlast_upserted AS (\n    SELECT\n        deal_id,\n        source_updated_at\n    FROM upserted\n    ORDER BY\n        source_updated_at DESC,\n        deal_id DESC\n    LIMIT 1\n)\n\nSELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n\n    'crm.deals'::TEXT AS entity_key,\n\n    $3::TEXT AS start_watermark,\n    $4::TEXT AS start_primary_key,\n\n    $6::INTEGER AS rows_extracted,\n    s.rows_upserted,\n\n    lu.source_updated_at::text AS end_watermark,\n    lu.deal_id AS end_primary_key,\n\n    (\n        s.rows_upserted = $6::INTEGER\n        AND s.rows_upserted > 0\n        AND lu.source_updated_at = $7::TIMESTAMPTZ\n        AND lu.deal_id = $8::TEXT\n    ) AS upsert_verified,\n\n    'raw_upsert_complete'::TEXT AS workflow_stage\n\nFROM stats s\nLEFT JOIN last_upserted lu\n    ON TRUE;",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $json.run_id,\n  $json.entity_run_id,\n  $json.start_watermark,\n  $json.start_primary_key,\n  JSON.stringify($json.changed_deals),\n  $json.rows_extracted,\n  $json.candidate_end_watermark,\n  $json.candidate_end_primary_key\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1792,
+        -288
+      ],
+      "id": "a9102e40-bcc8-4b84-9191-d3c02a3d00f7",
+      "name": "SYNC-010 | Upsert Changed Deals",
+      "credentials": {
+        "postgres": {
+          "id": "49PPUUns3Rf0L3VK",
+          "name": "LUMORA | Ingestion RW"
+        }
+      },
+      "notes": "COMPONENT ID\nSYNC-010\n\nNODE NAME\nSYNC-010 | Upsert Changed Deals\n\nNODE TYPE\nPostgres — Execute Query\n\nSTAGE\nStage 8 — Incremental Source Data Sync\n\nPURPOSE\nIdempotently writes the governed crm.deals incremental batch into raw_crm.deals.\n\nRESPONSIBILITY\nConverts the extracted JSON batch into the raw_crm.deals database row type.\n\nInserts new deals and updates existing deals using deal_id as the conflict key.\n\nSets ingested_at at ingestion time.\n\nVerifies that the number and ending cursor of successfully upserted records match the source extraction batch.\n\nDATABASE CREDENTIAL\nLUMORA | Ingestion RW\n\nDATABASE\nlumora_revenue_simulation\n\nAUTHORIZED DATABASE SCOPE\nraw_crm.deals\n\nIDEMPOTENCY CONTRACT\nON CONFLICT (deal_id) DO UPDATE.\n\nReplaying the same source batch must not create duplicate deals.\n\nVALIDATION CONTRACT\nupsert_verified = true only when:\nrows_upserted = rows_extracted\nrows_upserted > 0\nupsert ending watermark = source candidate ending watermark\nupsert ending primary key = source candidate ending primary key\n\nSECURITY BOUNDARY\nNo source-system credential is available to this node.\n\nNo runtime value selects a schema, table, SQL statement, or credential.\n\nNo reporting, governance, or original REVINT database access is authorized.\n\nCHECKPOINT RULE\nThis node does NOT advance the authoritative checkpoint.\n\nA successful raw upsert must be verified before the checkpoint can move.\n\nOUTPUT\nrun_id\nentity_run_id\nentity_key\nstart_watermark\nstart_primary_key\nrows_extracted\nrows_upserted\nend_watermark\nend_primary_key\nupsert_verified\nworkflow_stage\n\nTIMESTAMP PRECISION CONTRACT\nSource candidate watermarks arrive as exact PostgreSQL timestamp strings.\n\nValidation casts the string to TIMESTAMPTZ inside PostgreSQL.\n\nThe returned ending watermark is converted back to TEXT before entering n8n.\n\nThis prevents JavaScript millisecond truncation from weakening composite-cursor verification.\n\nFAILURE BEHAVIOR\nIf the database operation fails, the workflow stops.\n\nIf validation fails, the following IF gate must block checkpoint advancement.\n\nNO AI\nNO ARBITRARY SQL\nNO SOURCE WRITE\nNO CHECKPOINT ADVANCEMENT\nNO SECRET IN NODE NOTES\n\nSTATUS\nIn Progress — runtime verification pending."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "f34777d4-aed6-4a62-84f6-0066be26fed5",
+              "leftValue": "={{ $json.upsert_verified }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2016,
+        -288
+      ],
+      "id": "a370998c-9b11-43ed-93a6-c5908bacd088",
+      "name": "SYNC-011 | Upsert Verified?",
+      "notes": "COMPONENT ID\nSYNC-011\n\nNODE NAME\nSYNC-011 | Upsert Verified?\n\nNODE TYPE\nIF\n\nSTAGE\nStage 8 — Incremental Source Data Sync\n\nPURPOSE\nPrevents checkpoint advancement unless the raw upsert exactly matches the extracted source batch.\n\nAUTHORIZED INPUT\nupsert_verified\n\nVALIDATION CONTRACT\nTRUE:\nrows and composite ending cursor match the source batch.\n\nFALSE:\nraw persistence cannot be proven complete.\n\nSECURITY BOUNDARY\nThe authoritative checkpoint cannot advance through the FALSE path.\n\nOUTPUT\nTRUE → checkpoint commit path.\nFALSE → controlled workflow failure.\n\nNO AI\nNO SQL\nNO DATABASE ACCESS\nNO SECRET IN NODE NOTES\n\nSTATUS\nIn Progress — runtime verification pending."
+    },
+    {
+      "parameters": {
+        "errorMessage": "=={{\n'RAW_UPSERT_VERIFICATION_FAILED | run_id='\n+ $json.run_id\n+ ' | extracted='\n+ $json.rows_extracted\n+ ' | upserted='\n+ $json.rows_upserted\n}}"
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        2352,
+        -176
+      ],
+      "id": "1a6753f2-89fc-48fe-b4ec-6e0773065e96",
+      "name": "SYNC-ERR-01 | Stop Unverified Upsert",
+      "notes": "COMPONENT ID\nSYNC-ERR-01\n\nNODE NAME\nSYNC-ERR-01 | Stop Unverified Upsert\n\nNODE TYPE\nStop And Error\n\nPURPOSE\nFails closed when raw persistence cannot be verified.\n\nSECURITY BOUNDARY\nCheckpoint advancement is forbidden after an unverified upsert.\n\nThe workflow-level Lumora Error Handler receives the execution failure.\n\nNO AI\nNO DATABASE WRITE\nNO SECRET IN NODE NOTES\n\nSTATUS\nIn Progress — failure path configured."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH checkpoint_done AS (\n    UPDATE ingestion.sync_checkpoints sc\n    SET\n        last_watermark = $5::TIMESTAMPTZ,\n        last_primary_key = $6::TEXT,\n\n        checkpoint_status = 'ready',\n        claimed_run_id = NULL,\n\n        last_successful_run_id = $1::BIGINT,\n        last_synced_at = NOW(),\n        updated_at = NOW()\n\n    WHERE sc.entity_key = 'crm.deals'\n      AND sc.checkpoint_status = 'running'\n\n      -- Ownership guard.\n      AND sc.claimed_run_id = $1::BIGINT\n\n      -- The checkpoint must still contain the exact cursor\n      -- originally claimed by this run.\n      AND sc.last_watermark = $3::TIMESTAMPTZ\n      AND sc.last_primary_key = $4::TEXT\n\n      -- Do not allow a non-forward cursor.\n      AND (\n          $5::TIMESTAMPTZ,\n          $6::TEXT\n      ) > (\n          sc.last_watermark,\n          sc.last_primary_key\n      )\n\n      -- Control rows must still belong to this active run.\n      AND EXISTS (\n          SELECT 1\n          FROM ingestion.sync_runs sr\n          WHERE sr.run_id = $1::BIGINT\n            AND sr.run_status = 'running'\n      )\n\n      AND EXISTS (\n          SELECT 1\n          FROM ingestion.sync_run_entities sre\n          WHERE sre.entity_run_id = $2::BIGINT\n            AND sre.run_id = $1::BIGINT\n            AND sre.entity_key = 'crm.deals'\n            AND sre.entity_status = 'running'\n      )\n\n    RETURNING\n        sc.entity_key,\n        sc.last_watermark::text AS last_watermark,\n        sc.last_primary_key,\n        sc.last_successful_run_id\n),\n\nentity_done AS (\n    UPDATE ingestion.sync_run_entities\n    SET\n        start_watermark = $3::TIMESTAMPTZ,\n        start_primary_key = $4::TEXT,\n\n        end_watermark = $5::TIMESTAMPTZ,\n        end_primary_key = $6::TEXT,\n\n        rows_extracted = $7::INTEGER,\n        rows_upserted = $8::INTEGER,\n\n        entity_status = 'succeeded',\n        error_message = NULL,\n        completed_at = NOW()\n\n    WHERE entity_run_id = $2::BIGINT\n      AND run_id = $1::BIGINT\n      AND entity_key = 'crm.deals'\n      AND entity_status = 'running'\n\n      AND EXISTS (\n          SELECT 1\n          FROM checkpoint_done\n      )\n\n    RETURNING entity_run_id\n),\n\nrun_done AS (\n    UPDATE ingestion.sync_runs\n    SET\n        run_status = 'succeeded',\n        completed_at = NOW(),\n\n        rows_extracted = $7::INTEGER,\n        rows_upserted = $8::INTEGER,\n        rows_rejected = 0,\n\n        error_message = NULL,\n\n        run_metadata =\n            run_metadata ||\n            jsonb_build_object(\n                'result',\n                'changes_applied',\n\n                'checkpoint_advanced',\n                true,\n\n                'checkpoint_released',\n                true\n            )\n\n    WHERE run_id = $1::BIGINT\n      AND run_status = 'running'\n\n      AND EXISTS (\n          SELECT 1\n          FROM entity_done\n      )\n\n    RETURNING run_id\n)\n\nSELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n\n    EXISTS (\n        SELECT 1 FROM checkpoint_done\n    ) AS checkpoint_advanced,\n\n    EXISTS (\n        SELECT 1 FROM entity_done\n    ) AS entity_completed,\n\n    EXISTS (\n        SELECT 1 FROM run_done\n    ) AS run_completed,\n\n    ($3::TIMESTAMPTZ)::text AS old_watermark,\n    $4::TEXT AS old_primary_key,\n\n    ($5::TIMESTAMPTZ)::text AS new_watermark,\n    $6::TEXT AS new_primary_key,\n\n    $7::INTEGER AS rows_extracted,\n    $8::INTEGER AS rows_upserted,\n\n    CASE\n    WHEN EXISTS (\n        SELECT 1\n        FROM checkpoint_done\n    )\n    AND EXISTS (\n        SELECT 1\n        FROM entity_done\n    )\n    AND EXISTS (\n        SELECT 1\n        FROM run_done\n    )\n    THEN 'incremental_sync_committed'\n    ELSE 'incremental_sync_commit_unverified'\nEND::TEXT AS workflow_stage;",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $json.run_id,\n  $json.entity_run_id,\n  $json.start_watermark,\n  $json.start_primary_key,\n  $json.end_watermark,\n  $json.end_primary_key,\n  $json.rows_extracted,\n  $json.rows_upserted\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2240,
+        -384
+      ],
+      "id": "3c523f12-6c3b-4b8c-90c3-56cc5720e621",
+      "name": "SYNC-012 | Advance Deals Checkpoint",
+      "credentials": {
+        "postgres": {
+          "id": "49PPUUns3Rf0L3VK",
+          "name": "LUMORA | Ingestion RW"
+        }
+      },
+      "notes": "COMPONENT ID\nSYNC-012\n\nNODE NAME\nSYNC-012 | Advance Deals Checkpoint\n\nNODE TYPE\nPostgres — Execute Query\n\nSTAGE\nStage 8 — Incremental Source Data Sync\n\nPURPOSE\nCommits the successfully persisted source batch by advancing the authoritative composite cursor.\n\nRESPONSIBILITY\nAdvances crm.deals checkpoint.\nReleases checkpoint status to ready.\nMarks the entity run succeeded.\nMarks the overall run succeeded.\nRecords extraction/upsert counts.\n\nDATABASE CREDENTIAL\nLUMORA | Ingestion RW\n\nCHECKPOINT CONTRACT\nThe checkpoint moves only when:\ncheckpoint_status = running\nthe stored cursor still equals the cursor originally claimed\nthe upstream raw upsert has already been verified\n\nNEW CURSOR\n(end_watermark, end_primary_key)\n\nRECOVERY CONTRACT\nIf raw persistence succeeded but this checkpoint commit fails, replay remains safe because raw_crm.deals uses idempotent deal_id upserts and the old checkpoint has not advanced.\n\nSECURITY BOUNDARY\nNo source-system write access.\nNo reporting/governance access.\nNo manager-controlled SQL.\n\nOUTPUT\ncheckpoint_advanced\nentity_completed\nrun_completed\nold cursor\nnew cursor\nrows_extracted\nrows_upserted\nworkflow_stage\n\nNO AI\nNO ARBITRARY SQL\nNO SOURCE WRITE\nNO SECRET IN NODE NOTES\n\nSTATUS\nCHECKPOINT OWNERSHIP HARDENING — STAGE 8F\n\nCheckpoint claims are explicitly owned by run_id.\n\nClaim contract:\nready + claimed_run_id NULL\n→ running + claimed_run_id = current run_id\n\nCompletion contract:\nrunning + claimed_run_id = current run_id\n→ ready + claimed_run_id NULL\n\nA run may release or advance only the checkpoint it owns.\n\nSuccess paths also verify:\n- run_id is still running\n- entity_run_id belongs to run_id\n- entity status is still running\n- original composite cursor still matches\n\nPositive checkpoint advancement additionally requires the candidate composite cursor to be strictly greater than the current cursor.\n\nNO cross-run checkpoint release.\nNO backward cursor movement.\nNO AI authorization.\nNO arbitrary SQL.\nNO secrets in Notes.\n\nWORKFLOW STAGE CONTRACT\n\nincremental_sync_committed\nReturned only when:\n- checkpoint advancement succeeded\n- entity completion succeeded\n- run completion succeeded\n\nincremental_sync_commit_unverified\nReturned when the commit statement cannot prove all three completion conditions.\n\nThis label does NOT authorize recovery by itself.\nSYNC-013 and SYNC-020 remain responsible for deterministic verification and reconciliation.\n\nThe status is derived from data-modifying CTE RETURNING results to avoid PostgreSQL same-statement snapshot ambiguity."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "fc7b4fbc-0b51-4566-b96a-8886ed2f6b7d",
+              "leftValue": "={{\n$json.checkpoint_advanced === true\n&& $json.entity_completed === true\n&& $json.run_completed === true\n}}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2464,
+        -384
+      ],
+      "id": "cc377afd-5ba2-48ff-b32c-29b05c895333",
+      "name": "SYNC-013 | Commit Verified?",
+      "notes": "COMPONENT ID\nSYNC-013\n\nNODE NAME\nSYNC-013 | Commit Verified?\n\nNODE TYPE\nIF\n\nPURPOSE\nVerifies the authoritative checkpoint, entity run, and overall run were all committed successfully.\n\nTRUE\nThe incremental crm.deals sync is successfully committed.\n\nFALSE\nThe commit cannot be trusted and must raise a workflow failure.\n\nNO AI\nNO SQL\nNO DATABASE ACCESS\nNO SECRET IN NODE NOTES\n\nSTATUS\nIn Progress — runtime verification pending."
+    },
+    {
+      "parameters": {
+        "errorMessage": "={{\n'CHECKPOINT_COMMIT_VERIFICATION_FAILED | run_id='\n+ $json.run_id\n+ ' | reconciliation_case='\n+ ($json.reconciliation_case ?? 'unknown')\n}}"
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        2768,
+        -160
+      ],
+      "id": "b787fdb6-c8bb-4247-ad14-e55bae34becd",
+      "name": "SYNC-ERR-02 | Stop Unverified Commit",
+      "notes": "COMPONENT ID\nSYNC-ERR-02\n\nNODE\nStop Unverified Commit\n\nSTAGE\nStage 8F — Commit Verification Failure\n\nPURPOSE\nStops the workflow when checkpoint commit verification cannot be proven.\n\nCURRENT UPSTREAM\nSYNC-013 | Commit Verified?\n\nEXPECTED FUTURE UPSTREAM\nSYNC-020 | Reconcile Unverified Commit\n\nSECURITY PRINCIPLE\nThis Stop And Error node performs no database recovery itself.\n\nA failed commit-verification signal must never directly cause:\n- checkpoint rewind\n- checkpoint release without ownership proof\n- cursor modification\n- cross-run mutation\n\nAny recovery must first inspect authoritative database state.\n\nERROR\nCHECKPOINT_COMMIT_VERIFICATION_FAILED\n\nNO database writes.\nNO cursor mutation.\nNO checkpoint ownership changes.\nNO AI authorization.\nNO secrets in Notes.\n\nVERIFICATION STATUS\nExisting stop path verified previously; Stage 8F reconciliation hardening pending."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "BEGIN;\n\nCALL transformation.refresh_reporting();\n\nDO $lumora_validate$\nDECLARE\n    v_raw_deals              INTEGER;\n    v_reporting_deals        INTEGER;\n    v_rejections             INTEGER;\n    v_orphan_reporting       INTEGER;\n    v_value_mismatches       INTEGER;\nBEGIN\n\n    SELECT COUNT(*)::INTEGER\n    INTO v_raw_deals\n    FROM raw_crm.deals;\n\n    SELECT COUNT(*)::INTEGER\n    INTO v_reporting_deals\n    FROM reporting.fact_deals;\n\n    SELECT COUNT(*)::INTEGER\n    INTO v_rejections\n    FROM quality.transformation_rejections;\n\n\n    -- --------------------------------------------------------\n    -- COVERAGE VALIDATION\n    -- --------------------------------------------------------\n\n    IF v_raw_deals <> (v_reporting_deals + v_rejections) THEN\n        RAISE EXCEPTION\n            'REPORTING_REFRESH_COVERAGE_FAILED | raw=% | reporting=% | rejected=%',\n            v_raw_deals,\n            v_reporting_deals,\n            v_rejections;\n    END IF;\n\n\n    -- --------------------------------------------------------\n    -- ORPHAN VALIDATION\n    -- No reporting deal may exist without a raw source deal.\n    -- --------------------------------------------------------\n\n    SELECT COUNT(*)::INTEGER\n    INTO v_orphan_reporting\n    FROM reporting.fact_deals f\n\n    LEFT JOIN raw_crm.deals r\n        ON r.deal_id = f.deal_id\n\n    WHERE r.deal_id IS NULL;\n\n\n    IF v_orphan_reporting <> 0 THEN\n        RAISE EXCEPTION\n            'REPORTING_REFRESH_ORPHAN_FAILED | orphan_reporting_deals=%',\n            v_orphan_reporting;\n    END IF;\n\n\n    -- --------------------------------------------------------\n    -- VALUE ALIGNMENT VALIDATION\n    -- Verify important fields shared by raw and reporting.\n    -- --------------------------------------------------------\n\n    SELECT COUNT(*)::INTEGER\n    INTO v_value_mismatches\n\n    FROM raw_crm.deals r\n\n    JOIN reporting.fact_deals f\n        ON f.deal_id = r.deal_id\n\n    WHERE\n           r.amount\n               IS DISTINCT FROM f.amount\n\n        OR r.stage\n               IS DISTINCT FROM f.stage\n\n        OR r.outcome\n               IS DISTINCT FROM f.outcome\n\n        OR r.expected_close_date\n               IS DISTINCT FROM f.expected_close_date;\n\n\n    IF v_value_mismatches <> 0 THEN\n        RAISE EXCEPTION\n            'REPORTING_REFRESH_VALUE_ALIGNMENT_FAILED | mismatches=%',\n            v_value_mismatches;\n    END IF;\n\nEND;\n$lumora_validate$;\n\nCOMMIT;\n\n\nSELECT\n    (SELECT COUNT(*)::INTEGER\n     FROM raw_crm.deals)\n        AS raw_deal_count,\n\n    (SELECT COUNT(*)::INTEGER\n     FROM reporting.fact_deals)\n        AS reporting_deal_count,\n\n    (SELECT COUNT(*)::INTEGER\n     FROM quality.transformation_rejections)\n        AS transformation_rejections,\n\n    (\n        SELECT COUNT(*)::INTEGER\n        FROM raw_crm.deals r\n\n        JOIN reporting.fact_deals f\n            ON f.deal_id = r.deal_id\n\n        WHERE\n               r.amount\n                   IS DISTINCT FROM f.amount\n\n            OR r.stage\n                   IS DISTINCT FROM f.stage\n\n            OR r.outcome\n                   IS DISTINCT FROM f.outcome\n\n            OR r.expected_close_date\n                   IS DISTINCT FROM f.expected_close_date\n    ) AS value_mismatch_count,\n\n    (\n        SELECT amount::NUMERIC(14,2)\n        FROM reporting.fact_deals\n        WHERE deal_id = 'DL0392'\n    ) AS dl0392_reporting_amount,\n\n    (\n        SELECT\n            COALESCE(\n                SUM(amount),\n                0\n            )::NUMERIC(14,2)\n\n        FROM reporting.fact_deals\n        WHERE outcome IS NULL\n    ) AS all_open_pipeline,\n\n    (\n        SELECT COUNT(*)::INTEGER\n        FROM reporting.fact_deals\n        WHERE outcome IS NULL\n    ) AS open_deals,\n\n    TRUE AS reporting_refresh_valid,\n\n    'reporting_refresh_committed'::TEXT\n        AS workflow_stage;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2000,
+        32
+      ],
+      "id": "2d4d56f3-eb2c-43bd-9187-3ad041309acd",
+      "name": "SYNC-014 | Refresh Reporting",
+      "credentials": {
+        "postgres": {
+          "id": "192wXOn9YRgSRuw6",
+          "name": "LUMORA | Transform RW"
+        }
+      },
+      "notes": "COMPONENT ID\nSYNC-014\n\nNODE NAME\nSYNC-014 | Refresh Reporting\n\nNODE TYPE\nPostgres — Execute Query\n\nSTAGE\nStage 8 — Transactional Reporting Refresh\n\nPURPOSE\nRefreshes the governed Lumora reporting and quality layers from the successfully synchronized raw source layer.\n\nRESPONSIBILITY\nCalls the approved transformation.refresh_reporting() database procedure.\n\nRuns post-transformation integrity validation inside the same PostgreSQL transaction.\n\nCommits the reporting refresh only when the transformation and validation both succeed.\n\nDATABASE CREDENTIAL\nLUMORA | Transform RW\n\nDATABASE\nlumora_revenue_simulation\n\nAUTHORIZED DATABASE SCOPE\nREAD:\nraw_crm\nraw_marketing\nraw_billing\nraw_planning\n\nWRITE:\nreporting\nquality\n\nNO ACCESS:\ningestion\ncontrol\naudit\n\nTRANSACTION CONTRACT\nBEGIN\n→ CALL transformation.refresh_reporting()\n→ validate coverage\n→ validate orphan reporting rows\n→ validate important raw/reporting values\n→ COMMIT\n\nIf the procedure or any validation fails, PostgreSQL raises an exception and the transaction is rolled back.\n\nVALIDATION CONTRACT\nRaw deal count must equal:\nreporting fact deal count + transformation rejection count.\n\nNo reporting deal may exist without a corresponding raw deal.\n\nFor represented deals, these fields must match raw:\namount\nstage\noutcome\nexpected_close_date\n\nRECOVERY CONTRACT\nThis node runs after both:\nsuccessful changed-data sync\nsuccessful no-change sync\n\nTherefore a later no-change execution can repair a previously stale reporting layer without requiring another source-system change.\n\nSECURITY BOUNDARY\nThe node executes one fixed database-controlled transformation contract.\n\nManager input cannot select SQL, schema, table, procedure, or credential.\n\nThe credential cannot write raw source data.\n\nThe credential cannot read or modify ingestion, governance, or audit domains.\n\nNO AI\nNO ARBITRARY SQL\nNO SOURCE DATABASE ACCESS\nNO RAW WRITE\nNO INGESTION ACCESS\nNO GOVERNANCE ACCESS\nNO AUDIT ACCESS\nNO SECRET IN NODE NOTES\n\nSTATUS\nIn Progress — runtime verification pending."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n    COUNT(*)::INTEGER AS reporting_deal_count,\n\n    COUNT(*) FILTER (\n        WHERE outcome IS NULL\n    )::INTEGER AS open_deals,\n\n    COALESCE(\n        SUM(amount) FILTER (\n            WHERE outcome IS NULL\n        ),\n        0\n    )::NUMERIC(14,2) AS all_open_pipeline,\n\n    (\n        SELECT amount::NUMERIC(14,2)\n        FROM reporting.fact_deals\n        WHERE deal_id = 'DL0392'\n    ) AS dl0392_reporting_amount,\n\n    (\n        COUNT(*) = 600\n        AND COUNT(*) FILTER (WHERE outcome IS NULL) = 190\n\n        AND COALESCE(\n            SUM(amount) FILTER (WHERE outcome IS NULL),\n            0\n        ) = 2902000.00::NUMERIC\n\n        AND (\n            SELECT amount\n            FROM reporting.fact_deals\n            WHERE deal_id = 'DL0392'\n        ) = 8500.00::NUMERIC\n    ) AS reporting_ro_verified,\n\n    'reporting_ro_verification_complete'::TEXT\n        AS workflow_stage\n\nFROM reporting.fact_deals;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2208,
+        64
+      ],
+      "id": "76297476-25e6-4516-96a3-884d61e03340",
+      "name": "SYNC-015 | Verify Reporting via RO",
+      "credentials": {
+        "postgres": {
+          "id": "dMQZbXmVXjA4ciua",
+          "name": "LUMORA | Reporting RO"
+        }
+      },
+      "notes": "COMPONENT ID\nSYNC-015\n\nNODE NAME\nSYNC-015 | Verify Reporting via RO\n\nNODE TYPE\nPostgres — Execute Query\n\nSTAGE\nStage 8 — Independent Reporting Verification\n\nPURPOSE\nIndependently verifies the committed Lumora reporting state through the same read-only reporting security boundary used by governed reporting workloads.\n\nRESPONSIBILITY\nReads reporting.fact_deals after the transactional refresh and verifies the expected reporting state.\n\nDATABASE CREDENTIAL\nLUMORA | Reporting RO\n\nDATABASE\nlumora_revenue_simulation\n\nAUTHORIZED SCOPE\nSELECT only on approved reporting tables.\n\nNO raw access.\nNO ingestion access.\nNO quality write access.\nNO governance write access.\nNO audit write access.\n\nVERIFICATION CONTRACT\nreporting deal count = 600\nopen deal count = 190\nall-open pipeline = 2902000.00\nDL0392 reporting amount = 8500.00\n\nEXPECTED OUTPUT\nreporting_ro_verified = true\n\nSECURITY BOUNDARY\nThis node cannot modify reporting data.\n\nIt independently observes the committed reporting result after SYNC-014.\n\nThe verification does not rely on the Transform RW credential.\n\nNO AI\nNO WRITE\nNO ARBITRARY SQL\nNO RAW ACCESS\nNO SECRET IN NODE NOTES\n\nSTATUS\nIn Progress — runtime verification pending."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "b01ec163-27dd-4db1-b474-895219241217",
+              "leftValue": "={{ $json.reporting_ro_verified }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2432,
+        64
+      ],
+      "id": "c1965972-00db-49a3-9bbb-bc79286d6dfe",
+      "name": "SYNC-016 | Reporting RO Verified?",
+      "notes": "COMPONENT ID\nSYNC-016\n\nNODE NAME\nSYNC-016 | Reporting RO Verified?\n\nNODE TYPE\nIF\n\nSTAGE\nStage 8 — Reporting Verification Gate\n\nPURPOSE\nFail-closed gate for the independently verified reporting state.\n\nAUTHORIZED INPUT\nOnly the deterministic result produced by SYNC-015.\n\nTRUE CONDITION\nreporting_ro_verified = true\n\nTRUE PATH\nReporting refresh is independently verified through the read-only reporting boundary.\n\nFALSE PATH\nMust terminate through the explicit reporting verification failure node.\n\nSECURITY BOUNDARY\nNo database access.\nNo AI.\nNo dynamic SQL.\nNo secrets.\n\nSTATUS\nIn Progress — runtime verification pending."
+    },
+    {
+      "parameters": {
+        "errorMessage": "={{\n'REPORTING_RO_VERIFICATION_FAILED'\n+ ' | reporting_deal_count=' + $json.reporting_deal_count\n+ ' | open_deals=' + $json.open_deals\n+ ' | all_open_pipeline=' + $json.all_open_pipeline\n+ ' | dl0392=' + $json.dl0392_reporting_amount\n}}"
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        2688,
+        224
+      ],
+      "id": "f3cca065-6b80-4d7b-a664-6790f032c5a3",
+      "name": "SYNC-ERR-03 | Stop Reporting Verification Failure",
+      "notes": "COMPONENT ID\nSYNC-ERR-03\n\nNODE NAME\nSYNC-ERR-03 | Stop Reporting Verification Failure\n\nNODE TYPE\nStop And Error\n\nSTAGE\nStage 8 — Reporting Verification Failure\n\nPURPOSE\nStops the workflow if the committed reporting state cannot be independently verified through Reporting RO.\n\nFAILURE CONDITION\nSYNC-016 receives reporting_ro_verified = false.\n\nFAILURE BEHAVIOR\nRaises a controlled workflow error.\n\nThe configured Lumora Error Handler receives the workflow failure for incident handling.\n\nThis node does not attempt to repair, overwrite, or bypass the failed verification.\n\nSECURITY BOUNDARY\nNo database access.\nNo AI.\nNo SQL execution.\nNo secrets.\n\nSTATUS\nIn Progress — controlled failure path configured; positive runtime verification pending."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH entity_failed AS (\n    UPDATE ingestion.sync_run_entities\n    SET\n        entity_status = 'failed',\n        error_message =\n            'CHECKPOINT_NOT_READY',\n\n        completed_at = NOW()\n\n    WHERE entity_run_id = $2::BIGINT\n      AND run_id = $1::BIGINT\n      AND entity_key = 'crm.deals'\n      AND entity_status = 'running'\n\n    RETURNING entity_run_id\n),\n\nrun_failed AS (\n    UPDATE ingestion.sync_runs\n    SET\n        run_status = 'failed',\n\n        error_message =\n            'CHECKPOINT_NOT_READY',\n\n        completed_at = NOW(),\n\n        run_metadata =\n            run_metadata ||\n            jsonb_build_object(\n                'failure_stage',\n                'checkpoint_gate',\n\n                'failure_code',\n                'CHECKPOINT_NOT_READY',\n\n                'checkpoint_touched',\n                false\n            )\n\n    WHERE run_id = $1::BIGINT\n      AND run_status = 'running'\n\n    RETURNING run_id\n)\n\nSELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n\n    EXISTS (\n        SELECT 1\n        FROM entity_failed\n    ) AS entity_failed_now,\n\n    EXISTS (\n        SELECT 1\n        FROM run_failed\n    ) AS run_failed_now,\n\n    CASE\n        WHEN EXISTS (\n            SELECT 1\n            FROM entity_failed\n        )\n        THEN 'failed'\n        ELSE 'not_finalized'\n    END AS final_entity_status,\n\n    CASE\n        WHEN EXISTS (\n            SELECT 1\n            FROM run_failed\n        )\n        THEN 'failed'\n        ELSE 'not_finalized'\n    END AS final_run_status,\n\n    (\n        EXISTS (\n            SELECT 1\n            FROM entity_failed\n        )\n        AND\n        EXISTS (\n            SELECT 1\n            FROM run_failed\n        )\n    ) AS finalization_verified,\n\n    false AS checkpoint_modified,\n\n    'checkpoint_gate_failure_finalized'::TEXT\n        AS workflow_stage;",
+        "options": {
+          "queryReplacement": "={{ [$json.run_id, $json.entity_run_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        896,
+        96
+      ],
+      "id": "ad277499-00f3-4d8d-ae20-bdf9da2d216a",
+      "name": "SYNC-017 | Finalize Checkpoint Gate Failure",
+      "credentials": {
+        "postgres": {
+          "id": "49PPUUns3Rf0L3VK",
+          "name": "LUMORA | Ingestion RW"
+        }
+      },
+      "notes": "COMPONENT ID\nSYNC-017\n\nNODE\nFinalize Checkpoint Gate Failure\n\nSTAGE\nStage 8F — Sync Failure Finalization\n\nPURPOSE\nFinalizes the control records for a sync execution that is rejected before checkpoint ownership is acquired.\n\nRESPONSIBILITY\nMarks the current sync_run and sync_run_entity as failed when SYNC-004 rejects the checkpoint state.\n\nAUTHORIZED INPUT\nrun_id\nentity_run_id\n\nCREDENTIAL BOUNDARY\nLUMORA | Ingestion RW\n\nSECURITY CONTRACT\nThis node MUST NOT update ingestion.sync_checkpoints.\n\nThe current run has not acquired checkpoint ownership at this point.\n\nIt may update only:\n- its own sync_runs record\n- its own sync_run_entities record\n\nFailure code:\nCHECKPOINT_NOT_READY\n\nThe authoritative checkpoint and composite cursor remain untouched.\n\nEXPECTED OUTPUT\nfinal_entity_status = failed\nfinal_run_status = failed\nfinalization_verified = true\ncheckpoint_modified = false\n\nNO checkpoint release.\nNO cursor modification.\nNO cross-run mutation.\nNO AI authorization.\nNO arbitrary SQL.\nNO secrets in Notes.\n\nVerification uses data-modifying CTE RETURNING results rather than rereading the modified base tables in the same PostgreSQL statement, avoiding same-snapshot visibility ambiguity.\n\nVERIFICATION STATUS\nPending runtime verification."
+    },
+    {
+      "parameters": {
+        "errorMessage": "CHECKPOINT_NOT_READY | Sync execution rejected before checkpoint ownership. Control rows finalized as failed; checkpoint was not modified."
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        96
+      ],
+      "id": "a03fb662-b5d4-40ba-8588-2c71bad3990e",
+      "name": "SYNC-ERR-04 | Stop Checkpoint Gate Failure",
+      "notes": "COMPONENT ID\nSYNC-ERR-04\n\nNODE\nStop Checkpoint Gate Failure\n\nSTAGE\nStage 8F — Sync Failure Finalization\n\nPURPOSE\nTerminates the workflow after a pre-claim checkpoint gate rejection has been durably finalized.\n\nAUTHORIZED INPUT\nVerified output from SYNC-017 only.\n\nFAILURE CONTRACT\nThis node deliberately throws an execution error only after the run and entity control records have been finalized.\n\nThe checkpoint is not owned by this execution and must not be modified.\n\nExpected upstream state:\nfinalization_verified = true\ncheckpoint_modified = false\n\nThe configured Lumora Error Workflow may then receive the workflow-level failure.\n\nNO database writes.\nNO checkpoint release.\nNO cursor mutation.\nNO AI authorization.\nNO secrets in Notes.\n\nVERIFICATION STATUS\nPending runtime verification."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH entity_failed AS (\n    UPDATE ingestion.sync_run_entities\n    SET\n        entity_status = 'failed',\n\n        error_message =\n            'CHECKPOINT_CLAIM_FAILED',\n\n        completed_at = NOW()\n\n    WHERE entity_run_id = $2::BIGINT\n      AND run_id = $1::BIGINT\n      AND entity_key = 'crm.deals'\n      AND entity_status = 'running'\n\n    RETURNING entity_run_id\n),\n\nrun_failed AS (\n    UPDATE ingestion.sync_runs\n    SET\n        run_status = 'failed',\n\n        error_message =\n            'CHECKPOINT_CLAIM_FAILED',\n\n        completed_at = NOW(),\n\n        run_metadata =\n            run_metadata ||\n            jsonb_build_object(\n                'failure_stage',\n                'checkpoint_claim',\n\n                'failure_code',\n                'CHECKPOINT_CLAIM_FAILED',\n\n                'checkpoint_touched',\n                false\n            )\n\n    WHERE run_id = $1::BIGINT\n      AND run_status = 'running'\n\n    RETURNING run_id\n)\n\nSELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n\n    EXISTS (\n        SELECT 1\n        FROM entity_failed\n    ) AS entity_failed_now,\n\n    EXISTS (\n        SELECT 1\n        FROM run_failed\n    ) AS run_failed_now,\n\n    CASE\n        WHEN EXISTS (\n            SELECT 1\n            FROM entity_failed\n        )\n        THEN 'failed'\n        ELSE 'not_finalized'\n    END AS final_entity_status,\n\n    CASE\n        WHEN EXISTS (\n            SELECT 1\n            FROM run_failed\n        )\n        THEN 'failed'\n        ELSE 'not_finalized'\n    END AS final_run_status,\n\n    (\n        EXISTS (\n            SELECT 1\n            FROM entity_failed\n        )\n        AND\n        EXISTS (\n            SELECT 1\n            FROM run_failed\n        )\n    ) AS finalization_verified,\n\n    false AS checkpoint_modified,\n\n    'checkpoint_claim_failure_finalized'::TEXT\n        AS workflow_stage;",
+        "options": {
+          "queryReplacement": "={{ [$json.run_id, $json.entity_run_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1344,
+        0
+      ],
+      "id": "2c48660d-9a39-446d-8908-9f7066204617",
+      "name": "SYNC-018 | Finalize Claim Failure",
+      "credentials": {
+        "postgres": {
+          "id": "49PPUUns3Rf0L3VK",
+          "name": "LUMORA | Ingestion RW"
+        }
+      },
+      "notes": "COMPONENT ID\nSYNC-018\n\nNODE\nFinalize Checkpoint Claim Failure\n\nSTAGE\nStage 8F — Sync Failure Finalization\n\nPURPOSE\nFinalizes the current execution when the atomic checkpoint claim did not succeed.\n\nRESPONSIBILITY\nMarks only the current sync run and entity run as failed.\n\nAUTHORIZED INPUT\nrun_id\nentity_run_id\n\nCREDENTIAL BOUNDARY\nLUMORA | Ingestion RW\n\nSECURITY CONTRACT\nA failed claim means this execution does not own the checkpoint.\n\nThis node therefore MUST NOT release, reset, advance, or otherwise modify ingestion.sync_checkpoints.\n\nFailure code:\nCHECKPOINT_CLAIM_FAILED\n\nAnother execution may legitimately own the checkpoint.\n\nEXPECTED OUTPUT\nfinal_entity_status = failed\nfinal_run_status = failed\nfinalization_verified = true\ncheckpoint_modified = false\n\nNO checkpoint release.\nNO cursor modification.\nNO cross-run mutation.\nNO AI authorization.\nNO arbitrary SQL.\nNO secrets in Notes.\n\nVerification uses data-modifying CTE RETURNING results rather than rereading the modified base tables in the same PostgreSQL statement, avoiding same-snapshot visibility ambiguity.\n\nVERIFICATION STATUS\nPending runtime verification."
+    },
+    {
+      "parameters": {
+        "errorMessage": "CHECKPOINT_CLAIM_FAILED | Current sync execution did not acquire checkpoint ownership. Control rows finalized as failed; checkpoint owner and cursor were not modified."
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        1568,
+        0
+      ],
+      "id": "9578b8dc-ee26-4a40-9dd6-5510caed2e0a",
+      "name": "SYNC-ERR-05 | Stop Checkpoint Claim Failure",
+      "notes": "COMPONENT ID\nSYNC-ERR-05\n\nNODE\nStop Checkpoint Claim Failure\n\nSTAGE\nStage 8F — Sync Failure Finalization\n\nPURPOSE\nTerminates execution after an unsuccessful checkpoint claim has been durably finalized.\n\nAUTHORIZED INPUT\nVerified output from SYNC-018 only.\n\nSECURITY CONTRACT\nThe failed execution does not own the checkpoint.\n\nThe checkpoint must remain unchanged because another execution may own it.\n\nExpected upstream state:\nfinalization_verified = true\ncheckpoint_modified = false\n\nNO database writes.\nNO checkpoint release.\nNO cursor modification.\nNO cross-run mutation.\nNO AI authorization.\nNO secrets in Notes.\n\nVERIFICATION STATUS\nPending runtime verification."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH released AS (\n    UPDATE ingestion.sync_checkpoints sc\n    SET\n        checkpoint_status = 'ready',\n        claimed_run_id = NULL,\n        updated_at = NOW()\n    WHERE sc.entity_key = 'crm.deals'\n      AND sc.checkpoint_status = 'running'\n\n      -- Critical ownership boundary.\n      AND sc.claimed_run_id = $1::BIGINT\n\n      -- The checkpoint must still be the cursor originally\n      -- claimed by this run. No advancement is allowed here.\n      AND sc.last_watermark = $3::TIMESTAMPTZ\n      AND sc.last_primary_key = $4::TEXT\n\n    RETURNING\n        sc.entity_key,\n        sc.last_watermark::text AS retained_watermark,\n        sc.last_primary_key,\n        sc.last_successful_run_id\n),\n\nentity_failed AS (\n    UPDATE ingestion.sync_run_entities\n    SET\n        entity_status = 'failed',\n\n        error_message =\n            'UPSERT_VERIFICATION_FAILED',\n\n        completed_at = NOW()\n\n    WHERE entity_run_id = $2::BIGINT\n      AND run_id = $1::BIGINT\n      AND entity_key = 'crm.deals'\n      AND entity_status = 'running'\n\n      -- Failure finalization is allowed only after this\n      -- execution safely released its own checkpoint.\n      AND EXISTS (\n          SELECT 1\n          FROM released\n      )\n\n    RETURNING entity_run_id\n),\n\nrun_failed AS (\n    UPDATE ingestion.sync_runs\n    SET\n        run_status = 'failed',\n\n        error_message =\n            'UPSERT_VERIFICATION_FAILED',\n\n        completed_at = NOW(),\n\n        run_metadata =\n            run_metadata ||\n            jsonb_build_object(\n                'failure_stage',\n                'upsert_verification',\n\n                'failure_code',\n                'UPSERT_VERIFICATION_FAILED',\n\n                'checkpoint_released',\n                true,\n\n                'checkpoint_advanced',\n                false\n            )\n\n    WHERE run_id = $1::BIGINT\n      AND run_status = 'running'\n\n      AND EXISTS (\n          SELECT 1\n          FROM entity_failed\n      )\n\n    RETURNING run_id\n)\n\nSELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n\n    EXISTS (\n        SELECT 1\n        FROM released\n    ) AS checkpoint_released,\n\n    EXISTS (\n        SELECT 1\n        FROM entity_failed\n    ) AS entity_failed_now,\n\n    EXISTS (\n        SELECT 1\n        FROM run_failed\n    ) AS run_failed_now,\n\n    CASE\n        WHEN EXISTS (\n            SELECT 1\n            FROM entity_failed\n        )\n        THEN 'failed'\n        ELSE 'not_finalized'\n    END AS final_entity_status,\n\n    CASE\n        WHEN EXISTS (\n            SELECT 1\n            FROM run_failed\n        )\n        THEN 'failed'\n        ELSE 'not_finalized'\n    END AS final_run_status,\n\n    (\n        EXISTS (\n            SELECT 1\n            FROM released\n        )\n        AND\n        EXISTS (\n            SELECT 1\n            FROM entity_failed\n        )\n        AND\n        EXISTS (\n            SELECT 1\n            FROM run_failed\n        )\n    ) AS finalization_verified,\n\n    false AS checkpoint_advanced,\n\n    (\n        SELECT retained_watermark\n        FROM released\n    ) AS retained_watermark,\n\n    (\n        SELECT last_primary_key\n        FROM released\n    ) AS retained_primary_key,\n\n    (\n        SELECT last_successful_run_id\n        FROM released\n    ) AS retained_last_successful_run_id,\n\n    'owned_sync_failure_finalized'::TEXT\n        AS workflow_stage;",
+        "options": {
+          "queryReplacement": "={{\n[\n  $('SYNC-005 | Claim Deals Checkpoint').item.json.run_id,\n  $('SYNC-005 | Claim Deals Checkpoint').item.json.entity_run_id,\n  $('SYNC-005 | Claim Deals Checkpoint').item.json.last_watermark,\n  $('SYNC-005 | Claim Deals Checkpoint').item.json.last_primary_key\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2176,
+        -176
+      ],
+      "id": "24d6d3f4-5660-442b-af1f-40db99bbe52a",
+      "name": "SYNC-019 | Finalize Owned Sync Failure",
+      "credentials": {
+        "postgres": {
+          "id": "49PPUUns3Rf0L3VK",
+          "name": "LUMORA | Ingestion RW"
+        }
+      },
+      "notes": "COMPONENT ID\nSYNC-019\n\nNODE\nFinalize Owned Sync Failure\n\nSTAGE\nStage 8F — Post-Claim Failure Recovery\n\nPURPOSE\nSafely finalizes a sync execution that already owns the crm.deals checkpoint but fails before checkpoint advancement.\n\nCURRENT FAILURE SOURCE\nSYNC-011 | Upsert Verified? FALSE\n\nFAILURE CODE\nUPSERT_VERIFICATION_FAILED\n\nCREDENTIAL\nLUMORA | Ingestion RW\n\nOWNERSHIP CONTRACT\nThe checkpoint may be released only when:\ncheckpoint_status = running\nAND claimed_run_id = current run_id\n\nCURSOR CONTRACT\nThe current checkpoint must still equal the composite cursor originally claimed by the run.\n\nThis node does NOT advance the cursor.\n\nIt preserves:\n- last_watermark\n- last_primary_key\n- last_successful_run_id\n\nSuccessful recovery changes:\nrunning + claimed_run_id=current run\n→ ready + claimed_run_id=NULL\n\nThen the current entity and run are finalized as failed.\n\nAnother run's checkpoint can never be released.\n\nNO cross-run checkpoint release.\nNO checkpoint advancement.\nNO cursor rollback.\nNO cursor modification.\nNO AI authorization.\nNO arbitrary SQL.\nNO secrets in Notes.\n\nVERIFICATION STATUS\nPending controlled runtime verification."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH state AS MATERIALIZED (\n    SELECT\n        sc.entity_key,\n\n        sc.checkpoint_status,\n        sc.claimed_run_id,\n\n        sc.last_watermark::text\n            AS checkpoint_watermark,\n\n        sc.last_primary_key\n            AS checkpoint_primary_key,\n\n        sc.last_successful_run_id,\n\n        sr.run_status\n            AS initial_run_status,\n\n        sre.entity_status\n            AS initial_entity_status,\n\n        CASE\n\n            -- -------------------------------------------------\n            -- CASE A\n            -- Commit was NOT applied.\n            -- This run still owns the original cursor.\n            -- -------------------------------------------------\n\n            WHEN\n                sc.checkpoint_status = 'running'\n                AND sc.claimed_run_id = $1::BIGINT\n\n                AND sc.last_watermark =\n                    $3::TIMESTAMPTZ\n\n                AND sc.last_primary_key =\n                    $4::TEXT\n\n            THEN 'owned_old_cursor'\n\n\n            -- -------------------------------------------------\n            -- CASE B\n            -- Commit WAS applied.\n            -- The checkpoint contains the candidate cursor,\n            -- ownership is released, and this run is recorded\n            -- as the successful checkpoint owner.\n            -- -------------------------------------------------\n\n            WHEN\n                sc.checkpoint_status = 'ready'\n                AND sc.claimed_run_id IS NULL\n\n                AND sc.last_watermark =\n                    $5::TIMESTAMPTZ\n\n                AND sc.last_primary_key =\n                    $6::TEXT\n\n                AND sc.last_successful_run_id =\n                    $1::BIGINT\n\n            THEN 'committed_new_cursor'\n\n\n            -- -------------------------------------------------\n            -- CASE C\n            -- Unknown state.\n            -- Never mutate the checkpoint.\n            -- -------------------------------------------------\n\n            ELSE 'unexpected_state'\n\n        END AS reconciliation_case\n\n    FROM ingestion.sync_checkpoints sc\n\n    JOIN ingestion.sync_runs sr\n      ON sr.run_id = $1::BIGINT\n\n    JOIN ingestion.sync_run_entities sre\n      ON sre.entity_run_id = $2::BIGINT\n     AND sre.run_id = $1::BIGINT\n     AND sre.entity_key = 'crm.deals'\n\n    WHERE sc.entity_key = 'crm.deals'\n\n    FOR UPDATE OF sc, sr, sre\n),\n\n\n-- =========================================================\n-- CASE A\n-- Commit not applied.\n-- Release ONLY this run's claim.\n-- Preserve the original committed cursor.\n-- =========================================================\n\nrelease_old_claim AS (\n    UPDATE ingestion.sync_checkpoints sc\n    SET\n        checkpoint_status = 'ready',\n        claimed_run_id = NULL,\n        updated_at = NOW()\n\n    WHERE sc.entity_key = 'crm.deals'\n\n      AND sc.checkpoint_status = 'running'\n\n      AND sc.claimed_run_id =\n          $1::BIGINT\n\n      AND sc.last_watermark =\n          $3::TIMESTAMPTZ\n\n      AND sc.last_primary_key =\n          $4::TEXT\n\n      AND EXISTS (\n          SELECT 1\n          FROM state s\n          WHERE s.reconciliation_case =\n                'owned_old_cursor'\n      )\n\n    RETURNING\n        sc.entity_key,\n\n        sc.last_watermark::text\n            AS retained_watermark,\n\n        sc.last_primary_key\n            AS retained_primary_key,\n\n        sc.last_successful_run_id\n),\n\n\nentity_fail_old AS (\n    UPDATE ingestion.sync_run_entities\n    SET\n        entity_status = 'failed',\n\n        error_message =\n            'CHECKPOINT_COMMIT_NOT_APPLIED',\n\n        rows_extracted = $7::INTEGER,\n        rows_upserted = $8::INTEGER,\n\n        completed_at =\n            COALESCE(\n                completed_at,\n                NOW()\n            )\n\n    WHERE entity_run_id = $2::BIGINT\n      AND run_id = $1::BIGINT\n      AND entity_key = 'crm.deals'\n\n      AND entity_status = 'running'\n\n      AND EXISTS (\n          SELECT 1\n          FROM release_old_claim\n      )\n\n    RETURNING entity_run_id\n),\n\n\nrun_fail_old AS (\n    UPDATE ingestion.sync_runs\n    SET\n        run_status = 'failed',\n\n        error_message =\n            'CHECKPOINT_COMMIT_NOT_APPLIED',\n\n        rows_extracted = $7::INTEGER,\n        rows_upserted = $8::INTEGER,\n\n        completed_at =\n            COALESCE(\n                completed_at,\n                NOW()\n            ),\n\n        run_metadata =\n            run_metadata ||\n            jsonb_build_object(\n                'failure_stage',\n                'checkpoint_commit_verification',\n\n                'failure_code',\n                'CHECKPOINT_COMMIT_NOT_APPLIED',\n\n                'reconciliation_case',\n                'owned_old_cursor',\n\n                'checkpoint_released',\n                true,\n\n                'checkpoint_advanced',\n                false,\n\n                'cursor_rewound',\n                false\n            )\n\n    WHERE run_id = $1::BIGINT\n      AND run_status = 'running'\n\n      AND EXISTS (\n          SELECT 1\n          FROM release_old_claim\n      )\n\n    RETURNING run_id\n),\n\n\n-- =========================================================\n-- CASE B\n-- Database proves the checkpoint commit already succeeded.\n--\n-- NEVER release it.\n-- NEVER rewind it.\n--\n-- Reconcile control rows to succeeded if they are still\n-- running and record the verification anomaly.\n-- =========================================================\n\nentity_reconcile_committed AS (\n    UPDATE ingestion.sync_run_entities\n    SET\n        start_watermark =\n            $3::TIMESTAMPTZ,\n\n        start_primary_key =\n            $4::TEXT,\n\n        end_watermark =\n            $5::TIMESTAMPTZ,\n\n        end_primary_key =\n            $6::TEXT,\n\n        rows_extracted =\n            $7::INTEGER,\n\n        rows_upserted =\n            $8::INTEGER,\n\n        entity_status =\n            'succeeded',\n\n        error_message =\n            NULL,\n\n        completed_at =\n            COALESCE(\n                completed_at,\n                NOW()\n            )\n\n    WHERE entity_run_id =\n          $2::BIGINT\n\n      AND run_id =\n          $1::BIGINT\n\n      AND entity_key =\n          'crm.deals'\n\n      AND entity_status IN (\n          'running',\n          'succeeded'\n      )\n\n      AND EXISTS (\n          SELECT 1\n          FROM state s\n          WHERE s.reconciliation_case =\n                'committed_new_cursor'\n      )\n\n    RETURNING entity_run_id\n),\n\n\nrun_reconcile_committed AS (\n    UPDATE ingestion.sync_runs\n    SET\n        run_status =\n            'succeeded',\n\n        rows_extracted =\n            $7::INTEGER,\n\n        rows_upserted =\n            $8::INTEGER,\n\n        rows_rejected =\n            0,\n\n        error_message =\n            NULL,\n\n        completed_at =\n            COALESCE(\n                completed_at,\n                NOW()\n            ),\n\n        run_metadata =\n            run_metadata ||\n            jsonb_build_object(\n                'result',\n                'changes_applied',\n\n                'checkpoint_advanced',\n                true,\n\n                'checkpoint_released',\n                true,\n\n                'commit_reconciled',\n                true,\n\n                'commit_verification_anomaly',\n                true,\n\n                'reconciliation_case',\n                'committed_new_cursor',\n\n                'cursor_rewound',\n                false\n            )\n\n    WHERE run_id =\n          $1::BIGINT\n\n      AND run_status IN (\n          'running',\n          'succeeded'\n      )\n\n      AND EXISTS (\n          SELECT 1\n          FROM entity_reconcile_committed\n      )\n\n    RETURNING run_id\n),\n\n\n-- =========================================================\n-- CASE C\n-- Unexpected state.\n--\n-- Do NOT touch the checkpoint.\n-- Fail only this run's still-running control records.\n-- =========================================================\n\nentity_fail_unexpected AS (\n    UPDATE ingestion.sync_run_entities\n    SET\n        entity_status =\n            'failed',\n\n        error_message =\n            'CHECKPOINT_COMMIT_STATE_UNEXPECTED',\n\n        completed_at =\n            COALESCE(\n                completed_at,\n                NOW()\n            )\n\n    WHERE entity_run_id =\n          $2::BIGINT\n\n      AND run_id =\n          $1::BIGINT\n\n      AND entity_key =\n          'crm.deals'\n\n      AND entity_status =\n          'running'\n\n      AND EXISTS (\n          SELECT 1\n          FROM state s\n          WHERE s.reconciliation_case =\n                'unexpected_state'\n      )\n\n    RETURNING entity_run_id\n),\n\n\nrun_fail_unexpected AS (\n    UPDATE ingestion.sync_runs\n    SET\n        run_status =\n            'failed',\n\n        error_message =\n            'CHECKPOINT_COMMIT_STATE_UNEXPECTED',\n\n        completed_at =\n            COALESCE(\n                completed_at,\n                NOW()\n            ),\n\n        run_metadata =\n            run_metadata ||\n            jsonb_build_object(\n                'failure_stage',\n                'checkpoint_commit_reconciliation',\n\n                'failure_code',\n                'CHECKPOINT_COMMIT_STATE_UNEXPECTED',\n\n                'reconciliation_case',\n                'unexpected_state',\n\n                'checkpoint_modified',\n                false,\n\n                'cursor_rewound',\n                false\n            )\n\n    WHERE run_id =\n          $1::BIGINT\n\n      AND run_status =\n          'running'\n\n      AND EXISTS (\n          SELECT 1\n          FROM state s\n          WHERE s.reconciliation_case =\n                'unexpected_state'\n      )\n\n    RETURNING run_id\n)\n\n\nSELECT\n    $1::BIGINT\n        AS run_id,\n\n    $2::BIGINT\n        AS entity_run_id,\n\n    s.reconciliation_case,\n\n    -- -----------------------------------------------------\n    -- Authoritative state BEFORE reconciliation\n    -- -----------------------------------------------------\n\n    s.checkpoint_status\n        AS checkpoint_status_before,\n\n    s.claimed_run_id\n        AS claimed_run_id_before,\n\n    s.checkpoint_watermark\n        AS checkpoint_watermark_before,\n\n    s.checkpoint_primary_key\n        AS checkpoint_primary_key_before,\n\n    s.last_successful_run_id\n        AS last_successful_run_id_before,\n\n    s.initial_entity_status,\n    s.initial_run_status,\n\n\n    -- -----------------------------------------------------\n    -- Expected cursors supplied by SYNC-012\n    -- -----------------------------------------------------\n\n    ($3::TIMESTAMPTZ)::text\n        AS expected_old_watermark,\n\n    $4::TEXT\n        AS expected_old_primary_key,\n\n    ($5::TIMESTAMPTZ)::text\n        AS expected_new_watermark,\n\n    $6::TEXT\n        AS expected_new_primary_key,\n\n\n    -- -----------------------------------------------------\n    -- Recovery actions\n    -- -----------------------------------------------------\n\n    EXISTS (\n        SELECT 1\n        FROM release_old_claim\n    ) AS checkpoint_released,\n\n    EXISTS (\n        SELECT 1\n        FROM entity_fail_old\n    ) AS entity_failed_old_cursor,\n\n    EXISTS (\n        SELECT 1\n        FROM run_fail_old\n    ) AS run_failed_old_cursor,\n\n    EXISTS (\n        SELECT 1\n        FROM entity_reconcile_committed\n    ) AS entity_reconciled_committed,\n\n    EXISTS (\n        SELECT 1\n        FROM run_reconcile_committed\n    ) AS run_reconciled_committed,\n\n    EXISTS (\n        SELECT 1\n        FROM entity_fail_unexpected\n    ) AS entity_failed_unexpected,\n\n    EXISTS (\n        SELECT 1\n        FROM run_fail_unexpected\n    ) AS run_failed_unexpected,\n\n\n    -- -----------------------------------------------------\n    -- Final interpreted control status.\n    -- Use CTE RETURNING results rather than rereading\n    -- modified rows in the same statement.\n    -- -----------------------------------------------------\n\n    CASE\n        WHEN s.reconciliation_case =\n             'owned_old_cursor'\n        THEN\n            CASE\n                WHEN EXISTS (\n                    SELECT 1\n                    FROM entity_fail_old\n                )\n                THEN 'failed'\n                ELSE s.initial_entity_status\n            END\n\n        WHEN s.reconciliation_case =\n             'committed_new_cursor'\n        THEN\n            CASE\n                WHEN EXISTS (\n                    SELECT 1\n                    FROM entity_reconcile_committed\n                )\n                THEN 'succeeded'\n                ELSE s.initial_entity_status\n            END\n\n        ELSE\n            CASE\n                WHEN EXISTS (\n                    SELECT 1\n                    FROM entity_fail_unexpected\n                )\n                THEN 'failed'\n                ELSE s.initial_entity_status\n            END\n    END AS final_entity_status,\n\n\n    CASE\n        WHEN s.reconciliation_case =\n             'owned_old_cursor'\n        THEN\n            CASE\n                WHEN EXISTS (\n                    SELECT 1\n                    FROM run_fail_old\n                )\n                THEN 'failed'\n                ELSE s.initial_run_status\n            END\n\n        WHEN s.reconciliation_case =\n             'committed_new_cursor'\n        THEN\n            CASE\n                WHEN EXISTS (\n                    SELECT 1\n                    FROM run_reconcile_committed\n                )\n                THEN 'succeeded'\n                ELSE s.initial_run_status\n            END\n\n        ELSE\n            CASE\n                WHEN EXISTS (\n                    SELECT 1\n                    FROM run_fail_unexpected\n                )\n                THEN 'failed'\n                ELSE s.initial_run_status\n            END\n    END AS final_run_status,\n\n\n    -- -----------------------------------------------------\n    -- Verification\n    -- -----------------------------------------------------\n\n    CASE\n\n        WHEN s.reconciliation_case =\n             'owned_old_cursor'\n        THEN\n            EXISTS (\n                SELECT 1\n                FROM release_old_claim\n            )\n            AND\n            (\n                EXISTS (\n                    SELECT 1\n                    FROM entity_fail_old\n                )\n                OR\n                s.initial_entity_status =\n                    'failed'\n            )\n            AND\n            (\n                EXISTS (\n                    SELECT 1\n                    FROM run_fail_old\n                )\n                OR\n                s.initial_run_status =\n                    'failed'\n            )\n\n\n        WHEN s.reconciliation_case =\n             'committed_new_cursor'\n        THEN\n            EXISTS (\n                SELECT 1\n                FROM entity_reconcile_committed\n            )\n            AND\n            EXISTS (\n                SELECT 1\n                FROM run_reconcile_committed\n            )\n\n\n        ELSE false\n\n    END AS reconciliation_verified,\n\n\n    -- There is deliberately no checkpoint rewind path.\n    false AS checkpoint_rewound,\n\n\n    -- Only Case A modifies the checkpoint, and that\n    -- modification is an ownership-checked release.\n    EXISTS (\n        SELECT 1\n        FROM release_old_claim\n    ) AS checkpoint_modified,\n\n\n    CASE\n        WHEN s.reconciliation_case =\n             'unexpected_state'\n        THEN true\n        ELSE false\n    END AS failed_closed,\n\n\n    'commit_reconciliation_complete'::TEXT\n        AS workflow_stage\n\nFROM state s;",
+        "options": {
+          "queryReplacement": "={{\n[\n  $json.run_id,\n  $json.entity_run_id,\n  $json.old_watermark,\n  $json.old_primary_key,\n  $json.new_watermark,\n  $json.new_primary_key,\n  $json.rows_extracted,\n  $json.rows_upserted\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2576,
+        -160
+      ],
+      "id": "956b158d-83d9-45b8-9a8c-b0d9675affae",
+      "name": "SYNC-020 | Reconcile Unverified Commit",
+      "credentials": {
+        "postgres": {
+          "id": "49PPUUns3Rf0L3VK",
+          "name": "LUMORA | Ingestion RW"
+        }
+      },
+      "notes": "COMPONENT ID\nSYNC-020\n\nNODE\nReconcile Unverified Commit\n\nSTAGE\nStage 8F — Commit Verification Reconciliation\n\nPURPOSE\nDetermines the authoritative database state when SYNC-013 cannot verify the result returned by SYNC-012.\n\nCREDENTIAL\nLUMORA | Ingestion RW\n\nINPUT CONTRACT\nReceives the SYNC-012 commit-attempt result through the FALSE branch of SYNC-013.\n\nAUTHORIZED PARAMETERS\nrun_id\nentity_run_id\nold composite cursor\ncandidate/new composite cursor\nrows_extracted\nrows_upserted\n\nRECONCILIATION CASE A\nowned_old_cursor\n\nMeaning:\nThe current run still owns the original checkpoint and the candidate cursor was not committed.\n\nAction:\n- release only the current run's checkpoint claim\n- preserve existing cursor\n- preserve last_successful_run_id\n- mark current entity/run failed\n- allow deterministic replay\n\nRECONCILIATION CASE B\ncommitted_new_cursor\n\nMeaning:\nThe checkpoint already contains the new cursor, ownership has been released, and last_successful_run_id identifies the current run.\n\nAction:\n- NEVER rewind checkpoint\n- NEVER restore old cursor\n- reconcile current entity/run to succeeded when safe\n- record commit_verification_anomaly in run metadata\n- surface the anomaly through Stop And Error\n\nRECONCILIATION CASE C\nunexpected_state\n\nMeaning:\nThe checkpoint matches neither the owned-old-cursor contract nor the committed-new-cursor contract.\n\nAction:\n- DO NOT modify checkpoint\n- fail still-running current control records\n- fail closed\n- surface invariant violation\n\nCONCURRENCY BOUNDARY\nAuthoritative checkpoint, run, and entity rows are locked during reconciliation.\n\nSECURITY CONTRACT\nNo run may release a checkpoint owned by another run.\n\nThere is NO checkpoint rewind path.\n\nCommitted new cursors are never replaced with old cursors.\n\nUnexpected checkpoint ownership or cursor state is never automatically repaired.\n\nNO cross-run checkpoint release.\nNO cursor rollback.\nNO arbitrary checkpoint advancement.\nNO AI authorization.\nNO arbitrary SQL.\nNO secrets in Notes.\n\nVERIFICATION METHOD\nData-modifying CTE RETURNING results are used to verify same-statement updates and avoid PostgreSQL same-snapshot reread ambiguity.\n\nVERIFICATION STATUS\nPending controlled Case A and Case B runtime tests."
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "SYNC-001 | Manual Sync Test": {
+      "main": [
+        [
+          {
+            "node": "SYNC-002 | Start Deals Sync Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SYNC-002 | Start Deals Sync Run": {
+      "main": [
+        [
+          {
+            "node": "SYNC-003 | Load Deals Checkpoint",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SYNC-003 | Load Deals Checkpoint": {
+      "main": [
+        [
+          {
+            "node": "SYNC-004 | Checkpoint Ready?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SYNC-004 | Checkpoint Ready?": {
+      "main": [
+        [
+          {
+            "node": "SYNC-005 | Claim Deals Checkpoint",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SYNC-017 | Finalize Checkpoint Gate Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SYNC-005 | Claim Deals Checkpoint": {
+      "main": [
+        [
+          {
+            "node": "SYNC-006 | Checkpoint Claimed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SYNC-006 | Checkpoint Claimed?": {
+      "main": [
+        [
+          {
+            "node": "SYNC-007 | Extract Changed Deals",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SYNC-018 | Finalize Claim Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SYNC-007 | Extract Changed Deals": {
+      "main": [
+        [
+          {
+            "node": "SYNC-008 | Changes Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SYNC-008 | Changes Found?": {
+      "main": [
+        [
+          {
+            "node": "SYNC-010 | Upsert Changed Deals",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SYNC-009 | Complete No-Change Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SYNC-010 | Upsert Changed Deals": {
+      "main": [
+        [
+          {
+            "node": "SYNC-011 | Upsert Verified?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SYNC-011 | Upsert Verified?": {
+      "main": [
+        [
+          {
+            "node": "SYNC-012 | Advance Deals Checkpoint",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SYNC-019 | Finalize Owned Sync Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SYNC-012 | Advance Deals Checkpoint": {
+      "main": [
+        [
+          {
+            "node": "SYNC-013 | Commit Verified?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SYNC-013 | Commit Verified?": {
+      "main": [
+        [
+          {
+            "node": "SYNC-014 | Refresh Reporting",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SYNC-020 | Reconcile Unverified Commit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SYNC-009 | Complete No-Change Run": {
+      "main": [
+        [
+          {
+            "node": "SYNC-014 | Refresh Reporting",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SYNC-014 | Refresh Reporting": {
+      "main": [
+        [
+          {
+            "node": "SYNC-015 | Verify Reporting via RO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SYNC-015 | Verify Reporting via RO": {
+      "main": [
+        [
+          {
+            "node": "SYNC-016 | Reporting RO Verified?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SYNC-016 | Reporting RO Verified?": {
+      "main": [
+        [],
+        [
+          {
+            "node": "SYNC-ERR-03 | Stop Reporting Verification Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SYNC-017 | Finalize Checkpoint Gate Failure": {
+      "main": [
+        [
+          {
+            "node": "SYNC-ERR-04 | Stop Checkpoint Gate Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SYNC-018 | Finalize Claim Failure": {
+      "main": [
+        [
+          {
+            "node": "SYNC-ERR-05 | Stop Checkpoint Claim Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SYNC-019 | Finalize Owned Sync Failure": {
+      "main": [
+        [
+          {
+            "node": "SYNC-ERR-01 | Stop Unverified Upsert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SYNC-020 | Reconcile Unverified Commit": {
+      "main": [
+        [
+          {
+            "node": "SYNC-ERR-02 | Stop Unverified Commit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "mdedOsqws1SGmXxa",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "d3291be8-5974-4544-96b9-bd30cb5c3349",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "080cd0dc64b32b92e77885b815225580d842e8d1fa2787c6c185bd6539a4262e"
+  },
+  "nodeGroups": [],
+  "id": "c512e4UGyRSXBtsg",
+  "tags": []
+}

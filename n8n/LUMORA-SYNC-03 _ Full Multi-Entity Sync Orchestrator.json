@@ -1,0 +1,460 @@
+{
+  "name": "LUMORA-SYNC-03 | Full Multi-Entity Sync Orchestrator",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "347b5aaa-3131-46ba-a975-75fdbfc91517",
+      "name": "MSYNC-001 | Manual Full Sync",
+      "notes": "COMPONENT ID\nMSYNC-001\n\nNODE NAME\nMSYNC-001 | Manual Full Sync\n\nNODE TYPE\nManual Trigger\n\nSTAGE\nStage 8H \u2014 Parent Multi-Entity Orchestrator\n\nPURPOSE\nStarts a controlled full-source synchronization test.\n\nSECURITY BOUNDARY\nNo database access. No credentials. No AI. No secrets.\n\nSTATUS\nRuntime verification pending."
+    },
+    {
+      "parameters": {
+        "jsCode": "const entityKeys = [\n  'crm.sales_reps',\n  'crm.accounts',\n  'crm.contacts',\n  'crm.deals',\n  'crm.activities',\n  'marketing.campaigns',\n  'marketing.leads',\n  'billing.invoices',\n  'billing.payments',\n  'planning.sales_targets',\n];\n\nreturn entityKeys.map((entity_key, index) => ({\n  json: {\n    entity_key,\n    entity_order: index + 1,\n    full_sync_requested: true,\n  },\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ],
+      "id": "80062e2d-edd0-41d2-9e20-276608d8737b",
+      "name": "MSYNC-002 | Build Approved Entity Batch",
+      "notes": "COMPONENT ID\nMSYNC-002\n\nNODE NAME\nMSYNC-002 | Build Approved Entity Batch\n\nNODE TYPE\nCode\n\nSTAGE\nStage 8H \u2014 Parent Multi-Entity Orchestrator\n\nPURPOSE\nEmits the fixed ordered set of ten approved Lumora source entities.\n\nORDER\nCRM reference entities first, then deals/activities, marketing, billing, and planning.\n\nSECURITY BOUNDARY\nThe list is hardcoded. No manager/user input can inject a schema, table, SQL statement, or credential.\n\nNO AI\nNO DYNAMIC IDENTIFIERS\nNO SECRET IN NOTES\n\nSTATUS\nBuild complete; runtime verification pending."
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "SELECT: LUMORA-SYNC-02 | Entity Sync Worker | Production Callable"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "entity_key": "={{ $json.entity_key }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "entity_key",
+              "displayName": "entity_key",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        480,
+        0
+      ],
+      "id": "8b452750-5713-4f84-b802-df297fafaeb4",
+      "name": "MSYNC-003 | Run Entity Sync Worker",
+      "notes": "COMPONENT ID\nMSYNC-003\n\nNODE NAME\nMSYNC-003 | Run Entity Sync Worker\n\nNODE TYPE\nExecute Sub-workflow\n\nSTAGE\nStage 8H \u2014 Parent Multi-Entity Orchestrator\n\nPURPOSE\nCalls the verified reusable entity worker once for each approved entity and waits for every child execution to finish.\n\nCONFIGURATION REQUIRED AFTER IMPORT\nSelect workflow: LUMORA-SYNC-02 | Entity Sync Worker | Production Callable. This one-time selection is required because n8n assigns a local workflow ID on import.\n\nINPUT CONTRACT\nentity_key only.\n\nFAILURE BEHAVIOR\nA child workflow error fails the parent execution and prevents reporting refresh.\n\nSECURITY BOUNDARY\nSame-owner caller policy. No credentials are stored in this node. Child workflow retains all least-privilege database credentials and fail-closed routing.\n\nNO AI\nNO SECRET IN NOTES\n\nSTATUS\nBuild complete; runtime verification pending."
+    },
+    {
+      "parameters": {
+        "jsCode": "const expected = [\n  'crm.sales_reps','crm.accounts','crm.contacts','crm.deals','crm.activities',\n  'marketing.campaigns','marketing.leads','billing.invoices','billing.payments','planning.sales_targets'\n];\nconst allowedStages = new Set(['no_change_entity_sync_completed','entity_incremental_sync_committed']);\nconst rows = $input.all().map(i => i.json);\nconst keys = rows.map(r => r.entity_key);\nconst uniqueKeys = [...new Set(keys)];\nconst missing = expected.filter(k => !uniqueKeys.includes(k));\nconst unexpected = uniqueKeys.filter(k => !expected.includes(k));\nconst badStages = rows.filter(r => !allowedStages.has(r.workflow_stage)).map(r => ({entity_key:r.entity_key, workflow_stage:r.workflow_stage}));\nconst all_entities_succeeded = rows.length === 10 && uniqueKeys.length === 10 && missing.length === 0 && unexpected.length === 0 && badStages.length === 0;\nreturn [{json:{\n  all_entities_succeeded,\n  entity_result_count: rows.length,\n  unique_entity_count: uniqueKeys.length,\n  committed_entity_count: rows.filter(r => r.workflow_stage === 'entity_incremental_sync_committed').length,\n  no_change_entity_count: rows.filter(r => r.workflow_stage === 'no_change_entity_sync_completed').length,\n  missing_entities: missing,\n  unexpected_entities: unexpected,\n  invalid_stage_results: badStages,\n  entity_results: rows,\n  workflow_stage: 'full_sync_entity_batch_validated'\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        0
+      ],
+      "id": "b84fdd9b-dca2-44ce-96e9-6a6a47eb3971",
+      "name": "MSYNC-004 | Validate Entity Batch Results",
+      "notes": "COMPONENT ID\nMSYNC-004\n\nNODE NAME\nMSYNC-004 | Validate Entity Batch Results\n\nNODE TYPE\nCode\n\nSTAGE\nStage 8H \u2014 Parent Multi-Entity Orchestrator\n\nPURPOSE\nDeterministically validates that exactly ten unique approved entity results returned and that every child ended in an approved successful terminal stage.\n\nAPPROVED TERMINAL STAGES\nno_change_entity_sync_completed\nentity_incremental_sync_committed\n\nFAIL-CLOSED CONTRACT\nMissing entity, duplicate entity, unexpected entity, wrong count, or unapproved workflow stage makes all_entities_succeeded=false.\n\nNO AI\nNO DATABASE ACCESS\nNO SECRET IN NOTES\n\nSTATUS\nRuntime verification pending."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "1c46e888-97e6-4622-a186-97fb662e61ab",
+              "leftValue": "={{ $json.all_entities_succeeded }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        960,
+        0
+      ],
+      "id": "99bc59e2-1e4e-48a6-9853-497ba4e99b47",
+      "name": "MSYNC-005 | All Entities Succeeded?",
+      "notes": "COMPONENT ID\nMSYNC-005\n\nNODE NAME\nMSYNC-005 | All Entities Succeeded?\n\nNODE TYPE\nIF\n\nSTAGE\nStage 8H \u2014 Parent Multi-Entity Orchestrator\n\nPURPOSE\nFail-closed gate before any reporting refresh.\n\nTRUE CONDITION\nall_entities_succeeded = true.\n\nFALSE PATH\nStops the parent. Reporting refresh is not allowed.\n\nNO AI\nNO DATABASE ACCESS\nNO SECRET IN NOTES\n\nSTATUS\nRuntime verification pending."
+    },
+    {
+      "parameters": {
+        "errorMessage": "={{ 'FULL_SYNC_ENTITY_BATCH_VALIDATION_FAILED' + ' | results=' + $json.entity_result_count + ' | unique=' + $json.unique_entity_count + ' | missing=' + JSON.stringify($json.missing_entities) + ' | unexpected=' + JSON.stringify($json.unexpected_entities) + ' | badStages=' + JSON.stringify($json.invalid_stage_results) }}"
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        160
+      ],
+      "id": "ece4d4ff-3983-48f1-9ea9-22e7f0b0e999",
+      "name": "MSYNC-ERR-01 | Stop Entity Batch Failure",
+      "notes": "COMPONENT ID\nMSYNC-ERR-01\n\nNODE NAME\nMSYNC-ERR-01 | Stop Entity Batch Failure\n\nNODE TYPE\nStop And Error\n\nSTAGE\nStage 8H \u2014 Parent Multi-Entity Failure\n\nPURPOSE\nStops the full sync if the child result set is incomplete or invalid.\n\nSECURITY BOUNDARY\nNo database access. No SQL. No AI. No secrets.\n\nSTATUS\nConfigured; controlled runtime verification pending."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH approved(entity_key) AS (\n    VALUES\n      ('crm.sales_reps'::text),\n      ('crm.accounts'),\n      ('crm.contacts'),\n      ('crm.deals'),\n      ('crm.activities'),\n      ('marketing.campaigns'),\n      ('marketing.leads'),\n      ('billing.invoices'),\n      ('billing.payments'),\n      ('planning.sales_targets')\n)\nSELECT\n    COUNT(cp.entity_key)::INTEGER AS checkpoint_count,\n    COUNT(*) FILTER (\n        WHERE cp.checkpoint_status = 'ready'\n          AND cp.claimed_run_id IS NULL\n    )::INTEGER AS ready_checkpoint_count,\n    (SELECT COUNT(*)::INTEGER FROM ingestion.sync_runs WHERE run_status = 'running') AS active_run_count,\n    (SELECT COUNT(*)::INTEGER FROM ingestion.sync_run_entities WHERE entity_status = 'running') AS active_entity_run_count,\n    (\n        COUNT(cp.entity_key) = 10\n        AND COUNT(*) FILTER (WHERE cp.checkpoint_status = 'ready' AND cp.claimed_run_id IS NULL) = 10\n        AND (SELECT COUNT(*) FROM ingestion.sync_runs WHERE run_status = 'running') = 0\n        AND (SELECT COUNT(*) FROM ingestion.sync_run_entities WHERE entity_status = 'running') = 0\n    ) AS batch_checkpoint_verified,\n    'full_sync_checkpoint_verification_complete'::TEXT AS workflow_stage\nFROM approved a\nLEFT JOIN ingestion.sync_checkpoints cp ON cp.entity_key = a.entity_key;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1200,
+        -64
+      ],
+      "id": "09d1b0e1-3870-4e95-8034-5ffad52300b6",
+      "name": "MSYNC-006 | Verify All Checkpoints Released",
+      "credentials": {
+        "postgres": {
+          "id": "49PPUUns3Rf0L3VK",
+          "name": "LUMORA | Ingestion RW"
+        }
+      },
+      "notes": "COMPONENT ID\nMSYNC-006\n\nNODE NAME\nMSYNC-006 | Verify All Checkpoints Released\n\nNODE TYPE\nPostgres \u2014 Execute Query\n\nSTAGE\nStage 8H \u2014 Parent Multi-Entity Orchestrator\n\nPURPOSE\nAuthoritatively verifies all ten approved checkpoints are ready/unclaimed and that no ingestion run/entity-run remains running before reporting refresh.\n\nDATABASE CREDENTIAL\nLUMORA | Ingestion RW\n\nAUTHORIZED SCOPE\nRead ingestion control state only for this verification.\n\nTRUE CONTRACT\n10 approved checkpoints exist; all 10 are ready; all claimed_run_id values are NULL; active run counts are zero.\n\nNO AI\nNO RAW MUTATION\nNO REPORTING ACCESS\nNO SECRET IN NOTES\n\nSTATUS\nRuntime verification pending."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "801b3138-7205-48ab-8b35-df1f05b6ca4f",
+              "leftValue": "={{ $json.batch_checkpoint_verified }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1440,
+        -64
+      ],
+      "id": "f36ea937-831a-4a60-944f-2237e858ce9f",
+      "name": "MSYNC-007 | Checkpoints Clean?",
+      "notes": "COMPONENT ID\nMSYNC-007\n\nNODE NAME\nMSYNC-007 | Checkpoints Clean?\n\nNODE TYPE\nIF\n\nSTAGE\nStage 8H \u2014 Pre-Refresh Checkpoint Gate\n\nPURPOSE\nBlocks reporting refresh unless authoritative ingestion state confirms all ten checkpoints are released and no sync executions remain running.\n\nFALSE PATH\nStop with a controlled failure.\n\nNO AI\nNO DATABASE ACCESS\nNO SECRET IN NOTES\n\nSTATUS\nRuntime verification pending."
+    },
+    {
+      "parameters": {
+        "errorMessage": "={{ 'FULL_SYNC_CHECKPOINT_VERIFICATION_FAILED' + ' | checkpoints=' + $json.checkpoint_count + ' | ready=' + $json.ready_checkpoint_count + ' | active_runs=' + $json.active_run_count + ' | active_entity_runs=' + $json.active_entity_run_count }}"
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        1680,
+        96
+      ],
+      "id": "ef3142e9-8407-4853-a3ad-0af9d8e3b0b2",
+      "name": "MSYNC-ERR-02 | Stop Checkpoint Verification Failure",
+      "notes": "COMPONENT ID\nMSYNC-ERR-02\n\nNODE NAME\nMSYNC-ERR-02 | Stop Checkpoint Verification Failure\n\nNODE TYPE\nStop And Error\n\nPURPOSE\nPrevents reporting refresh if any checkpoint/run ownership state is not clean.\n\nNO DATABASE ACCESS\nNO AI\nNO SECRET IN NOTES\n\nSTATUS\nConfigured; runtime verification pending."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "BEGIN;\n\nCALL transformation.refresh_reporting();\n\nDO $lumora_validate$\nDECLARE\n    v_raw_deals              INTEGER;\n    v_reporting_deals        INTEGER;\n    v_rejections             INTEGER;\n    v_orphan_reporting       INTEGER;\n    v_value_mismatches       INTEGER;\nBEGIN\n\n    SELECT COUNT(*)::INTEGER\n    INTO v_raw_deals\n    FROM raw_crm.deals;\n\n    SELECT COUNT(*)::INTEGER\n    INTO v_reporting_deals\n    FROM reporting.fact_deals;\n\n    SELECT COUNT(*)::INTEGER\n    INTO v_rejections\n    FROM quality.transformation_rejections;\n\n\n    -- --------------------------------------------------------\n    -- COVERAGE VALIDATION\n    -- --------------------------------------------------------\n\n    IF v_raw_deals <> (v_reporting_deals + v_rejections) THEN\n        RAISE EXCEPTION\n            'REPORTING_REFRESH_COVERAGE_FAILED | raw=% | reporting=% | rejected=%',\n            v_raw_deals,\n            v_reporting_deals,\n            v_rejections;\n    END IF;\n\n\n    -- --------------------------------------------------------\n    -- ORPHAN VALIDATION\n    -- No reporting deal may exist without a raw source deal.\n    -- --------------------------------------------------------\n\n    SELECT COUNT(*)::INTEGER\n    INTO v_orphan_reporting\n    FROM reporting.fact_deals f\n\n    LEFT JOIN raw_crm.deals r\n        ON r.deal_id = f.deal_id\n\n    WHERE r.deal_id IS NULL;\n\n\n    IF v_orphan_reporting <> 0 THEN\n        RAISE EXCEPTION\n            'REPORTING_REFRESH_ORPHAN_FAILED | orphan_reporting_deals=%',\n            v_orphan_reporting;\n    END IF;\n\n\n    -- --------------------------------------------------------\n    -- VALUE ALIGNMENT VALIDATION\n    -- Verify important fields shared by raw and reporting.\n    -- --------------------------------------------------------\n\n    SELECT COUNT(*)::INTEGER\n    INTO v_value_mismatches\n\n    FROM raw_crm.deals r\n\n    JOIN reporting.fact_deals f\n        ON f.deal_id = r.deal_id\n\n    WHERE\n           r.amount\n               IS DISTINCT FROM f.amount\n\n        OR r.stage\n               IS DISTINCT FROM f.stage\n\n        OR r.outcome\n               IS DISTINCT FROM f.outcome\n\n        OR r.expected_close_date\n               IS DISTINCT FROM f.expected_close_date;\n\n\n    IF v_value_mismatches <> 0 THEN\n        RAISE EXCEPTION\n            'REPORTING_REFRESH_VALUE_ALIGNMENT_FAILED | mismatches=%',\n            v_value_mismatches;\n    END IF;\n\nEND;\n$lumora_validate$;\n\nCOMMIT;\n\n\nSELECT\n    (SELECT COUNT(*)::INTEGER\n     FROM raw_crm.deals)\n        AS raw_deal_count,\n\n    (SELECT COUNT(*)::INTEGER\n     FROM reporting.fact_deals)\n        AS reporting_deal_count,\n\n    (SELECT COUNT(*)::INTEGER\n     FROM quality.transformation_rejections)\n        AS transformation_rejections,\n\n    (\n        SELECT COUNT(*)::INTEGER\n        FROM raw_crm.deals r\n\n        JOIN reporting.fact_deals f\n            ON f.deal_id = r.deal_id\n\n        WHERE\n               r.amount\n                   IS DISTINCT FROM f.amount\n\n            OR r.stage\n                   IS DISTINCT FROM f.stage\n\n            OR r.outcome\n                   IS DISTINCT FROM f.outcome\n\n            OR r.expected_close_date\n                   IS DISTINCT FROM f.expected_close_date\n    ) AS value_mismatch_count,\n\n    (\n        SELECT amount::NUMERIC(14,2)\n        FROM reporting.fact_deals\n        WHERE deal_id = 'DL0392'\n    ) AS dl0392_reporting_amount,\n\n    (\n        SELECT\n            COALESCE(\n                SUM(amount),\n                0\n            )::NUMERIC(14,2)\n\n        FROM reporting.fact_deals\n        WHERE outcome IS NULL\n    ) AS all_open_pipeline,\n\n    (\n        SELECT COUNT(*)::INTEGER\n        FROM reporting.fact_deals\n        WHERE outcome IS NULL\n    ) AS open_deals,\n\n    TRUE AS reporting_refresh_valid,\n\n    'reporting_refresh_committed'::TEXT\n        AS workflow_stage;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1680,
+        -96
+      ],
+      "id": "113d5e42-82ae-41e4-bfec-40c959cca512",
+      "name": "MSYNC-008 | Refresh Reporting Once",
+      "credentials": {
+        "postgres": {
+          "id": "192wXOn9YRgSRuw6",
+          "name": "LUMORA | Transform RW"
+        }
+      },
+      "notes": "COMPONENT ID\nMSYNC-008\n\nNODE NAME\nMSYNC-008 | Refresh Reporting Once\n\nNODE TYPE\nPostgres \u2014 Execute Query\n\nSTAGE\nStage 8 \u2014 Transactional Reporting Refresh\n\nPURPOSE\nRefreshes the governed Lumora reporting and quality layers from the successfully synchronized raw source layer.\n\nRESPONSIBILITY\nCalls the approved transformation.refresh_reporting() database procedure.\n\nRuns post-transformation integrity validation inside the same PostgreSQL transaction.\n\nCommits the reporting refresh only when the transformation and validation both succeed.\n\nDATABASE CREDENTIAL\nLUMORA | Transform RW\n\nDATABASE\nlumora_revenue_simulation\n\nAUTHORIZED DATABASE SCOPE\nREAD:\nraw_crm\nraw_marketing\nraw_billing\nraw_planning\n\nWRITE:\nreporting\nquality\n\nNO ACCESS:\ningestion\ncontrol\naudit\n\nTRANSACTION CONTRACT\nBEGIN\n\u2192 CALL transformation.refresh_reporting()\n\u2192 validate coverage\n\u2192 validate orphan reporting rows\n\u2192 validate important raw/reporting values\n\u2192 COMMIT\n\nIf the procedure or any validation fails, PostgreSQL raises an exception and the transaction is rolled back.\n\nVALIDATION CONTRACT\nRaw deal count must equal:\nreporting fact deal count + transformation rejection count.\n\nNo reporting deal may exist without a corresponding raw deal.\n\nFor represented deals, these fields must match raw:\namount\nstage\noutcome\nexpected_close_date\n\nRECOVERY CONTRACT\nThis node runs once only after the parent proves all ten entity workers completed successfully and every checkpoint is released.\n\nTherefore a later no-change execution can repair a previously stale reporting layer without requiring another source-system change.\n\nSECURITY BOUNDARY\nThe node executes one fixed database-controlled transformation contract.\n\nManager input cannot select SQL, schema, table, procedure, or credential.\n\nThe credential cannot write raw source data.\n\nThe credential cannot read or modify ingestion, governance, or audit domains.\n\nNO AI\nNO ARBITRARY SQL\nNO SOURCE DATABASE ACCESS\nNO RAW WRITE\nNO INGESTION ACCESS\nNO GOVERNANCE ACCESS\nNO AUDIT ACCESS\nNO SECRET IN NODE NOTES\n\nSTATUS\nStage 8H parent-orchestrator runtime verification pending."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n    COUNT(*)::INTEGER AS reporting_deal_count,\n\n    COUNT(*) FILTER (\n        WHERE outcome IS NULL\n    )::INTEGER AS open_deals,\n\n    COALESCE(\n        SUM(amount) FILTER (\n            WHERE outcome IS NULL\n        ),\n        0\n    )::NUMERIC(14,2) AS all_open_pipeline,\n\n    (\n        SELECT amount::NUMERIC(14,2)\n        FROM reporting.fact_deals\n        WHERE deal_id = 'DL0392'\n    ) AS dl0392_reporting_amount,\n\n    (\n        COUNT(*) = 600\n        AND COUNT(*) FILTER (WHERE outcome IS NULL) = 190\n\n        AND COALESCE(\n            SUM(amount) FILTER (WHERE outcome IS NULL),\n            0\n        ) = 2902000.00::NUMERIC\n\n        AND (\n            SELECT amount\n            FROM reporting.fact_deals\n            WHERE deal_id = 'DL0392'\n        ) = 8500.00::NUMERIC\n    ) AS reporting_ro_verified,\n\n    'reporting_ro_verification_complete'::TEXT\n        AS workflow_stage\n\nFROM reporting.fact_deals;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1920,
+        -96
+      ],
+      "id": "52f1d0c3-ed49-4231-be7b-6198a2ea03da",
+      "name": "MSYNC-009 | Verify Reporting via RO",
+      "credentials": {
+        "postgres": {
+          "id": "dMQZbXmVXjA4ciua",
+          "name": "LUMORA | Reporting RO"
+        }
+      },
+      "notes": "COMPONENT ID\nMSYNC-009\n\nNODE NAME\nMSYNC-009 | Verify Reporting via RO\n\nNODE TYPE\nPostgres \u2014 Execute Query\n\nSTAGE\nStage 8 \u2014 Independent Reporting Verification\n\nPURPOSE\nIndependently verifies the committed Lumora reporting state through the same read-only reporting security boundary used by governed reporting workloads.\n\nRESPONSIBILITY\nReads reporting.fact_deals after the transactional refresh and verifies the expected reporting state.\n\nDATABASE CREDENTIAL\nLUMORA | Reporting RO\n\nDATABASE\nlumora_revenue_simulation\n\nAUTHORIZED SCOPE\nSELECT only on approved reporting tables.\n\nNO raw access.\nNO ingestion access.\nNO quality write access.\nNO governance write access.\nNO audit write access.\n\nVERIFICATION CONTRACT\nreporting deal count = 600\nopen deal count = 190\nall-open pipeline = 2902000.00\nDL0392 reporting amount = 8500.00\n\nEXPECTED OUTPUT\nreporting_ro_verified = true\n\nSECURITY BOUNDARY\nThis node cannot modify reporting data.\n\nIt independently observes the committed reporting result after MSYNC-008.\n\nThe verification does not rely on the Transform RW credential.\n\nNO AI\nNO WRITE\nNO ARBITRARY SQL\nNO RAW ACCESS\nNO SECRET IN NODE NOTES\n\nSTATUS\nStage 8H parent-orchestrator runtime verification pending."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "67760921-bb56-44e4-941f-4d628666495d",
+              "leftValue": "={{ $json.reporting_ro_verified }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2160,
+        -96
+      ],
+      "id": "38d991ac-63ce-4ba6-857b-09f35533f521",
+      "name": "MSYNC-010 | Reporting RO Verified?",
+      "notes": "COMPONENT ID\nMSYNC-010\n\nNODE NAME\nMSYNC-010 | Reporting RO Verified?\n\nNODE TYPE\nIF\n\nSTAGE\nStage 8 \u2014 Reporting Verification Gate\n\nPURPOSE\nFail-closed gate for the independently verified reporting state.\n\nAUTHORIZED INPUT\nOnly the deterministic result produced by MSYNC-009.\n\nTRUE CONDITION\nreporting_ro_verified = true\n\nTRUE PATH\nReporting refresh is independently verified through the read-only reporting boundary.\n\nFALSE PATH\nMust terminate through the explicit reporting verification failure node.\n\nSECURITY BOUNDARY\nNo database access.\nNo AI.\nNo dynamic SQL.\nNo secrets.\n\nSTATUS\nStage 8H parent-orchestrator runtime verification pending."
+    },
+    {
+      "parameters": {
+        "errorMessage": "={{\n'REPORTING_RO_VERIFICATION_FAILED'\n+ ' | reporting_deal_count=' + $json.reporting_deal_count\n+ ' | open_deals=' + $json.open_deals\n+ ' | all_open_pipeline=' + $json.all_open_pipeline\n+ ' | dl0392=' + $json.dl0392_reporting_amount\n}}"
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        2400,
+        64
+      ],
+      "id": "550cf320-6d05-4607-a24c-16577b08447e",
+      "name": "MSYNC-ERR-03 | Stop Reporting Verification Failure",
+      "notes": "COMPONENT ID\nSYNC-ERR-03\n\nNODE NAME\nMSYNC-ERR-03 | Stop Reporting Verification Failure\n\nNODE TYPE\nStop And Error\n\nSTAGE\nStage 8 \u2014 Reporting Verification Failure\n\nPURPOSE\nStops the workflow if the committed reporting state cannot be independently verified through Reporting RO.\n\nFAILURE CONDITION\nMSYNC-010 receives reporting_ro_verified = false.\n\nFAILURE BEHAVIOR\nRaises a controlled workflow error.\n\nThe configured Lumora Error Handler receives the workflow failure for incident handling.\n\nThis node does not attempt to repair, overwrite, or bypass the failed verification.\n\nSECURITY BOUNDARY\nNo database access.\nNo AI.\nNo SQL execution.\nNo secrets.\n\nSTATUS\nConfigured; Stage 8H controlled runtime verification pending."
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{json:{\n  full_sync_succeeded: true,\n  reporting_ro_verified: Boolean($json.reporting_ro_verified),\n  reporting_deal_count: $json.reporting_deal_count,\n  open_deals: $json.open_deals,\n  all_open_pipeline: $json.all_open_pipeline,\n  dl0392_reporting_amount: $json.dl0392_reporting_amount,\n  completed_at: new Date().toISOString(),\n  workflow_stage: 'full_multi_entity_sync_and_reporting_verified'\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2400,
+        -160
+      ],
+      "id": "d93e0307-b055-45e2-b840-e35dcb3e56c1",
+      "name": "MSYNC-011 | Build Full Sync Summary",
+      "notes": "COMPONENT ID\nMSYNC-011\n\nNODE NAME\nMSYNC-011 | Build Full Sync Summary\n\nNODE TYPE\nCode\n\nSTAGE\nStage 8H \u2014 Parent Multi-Entity Orchestrator\n\nPURPOSE\nReturns the final deterministic success contract after all entity syncs, checkpoint cleanup, transactional reporting refresh, and independent Reporting RO verification succeed.\n\nNO AI\nNO DATABASE ACCESS\nNO SECRET IN NOTES\n\nSTATUS\nRuntime verification pending."
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "MSYNC-001 | Manual Full Sync": {
+      "main": [
+        [
+          {
+            "node": "MSYNC-002 | Build Approved Entity Batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MSYNC-002 | Build Approved Entity Batch": {
+      "main": [
+        [
+          {
+            "node": "MSYNC-003 | Run Entity Sync Worker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MSYNC-003 | Run Entity Sync Worker": {
+      "main": [
+        [
+          {
+            "node": "MSYNC-004 | Validate Entity Batch Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MSYNC-004 | Validate Entity Batch Results": {
+      "main": [
+        [
+          {
+            "node": "MSYNC-005 | All Entities Succeeded?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MSYNC-005 | All Entities Succeeded?": {
+      "main": [
+        [
+          {
+            "node": "MSYNC-006 | Verify All Checkpoints Released",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "MSYNC-ERR-01 | Stop Entity Batch Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MSYNC-006 | Verify All Checkpoints Released": {
+      "main": [
+        [
+          {
+            "node": "MSYNC-007 | Checkpoints Clean?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MSYNC-007 | Checkpoints Clean?": {
+      "main": [
+        [
+          {
+            "node": "MSYNC-008 | Refresh Reporting Once",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "MSYNC-ERR-02 | Stop Checkpoint Verification Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MSYNC-008 | Refresh Reporting Once": {
+      "main": [
+        [
+          {
+            "node": "MSYNC-009 | Verify Reporting via RO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MSYNC-009 | Verify Reporting via RO": {
+      "main": [
+        [
+          {
+            "node": "MSYNC-010 | Reporting RO Verified?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MSYNC-010 | Reporting RO Verified?": {
+      "main": [
+        [
+          {
+            "node": "MSYNC-011 | Build Full Sync Summary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "MSYNC-ERR-03 | Stop Reporting Verification Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "mdedOsqws1SGmXxa",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "tags": []
+}

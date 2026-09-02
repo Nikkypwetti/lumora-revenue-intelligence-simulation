@@ -1,0 +1,7 @@
+sales_rep_id,sales_rep_name,email,region,is_active,created_at,updated_at
+SR001,Amina Yusuf,amina.yusuf@lumora.example,EMEA,t,2024-02-12 09:00:00+00,2026-08-31 20:29:24.128107+00
+SR002,David Cole,david.cole@lumora.example,North America,t,2024-05-06 09:00:00+00,2026-08-30 15:40:11.244974+00
+SR003,Sarah Malik,sarah.malik@lumora.example,EMEA,t,2025-01-20 09:00:00+00,2026-08-30 15:40:11.244974+00
+SR004,Michael James,michael.james@lumora.example,North America,t,2023-09-11 09:00:00+00,2026-08-30 15:40:11.244974+00
+SR005,Daniel Okafor,daniel.okafor@lumora.example,EMEA,t,2024-03-18 09:00:00+00,2026-08-30 15:40:11.244974+00
+SR006,Jessica Brown,jessica.brown@lumora.example,North America,t,2025-02-03 09:00:00+00,2026-08-30 15:40:11.244974+00

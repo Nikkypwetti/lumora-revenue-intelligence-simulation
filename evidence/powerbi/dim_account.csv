@@ -1,0 +1,151 @@
+account_id,account_name,industry,segment,country,is_active,created_at,updated_at
+ACC0001,Northstar Health 001,Technology,SMB,United States,t,2025-09-03 09:00:00+00,2026-08-31 20:58:00.213051+00
+ACC0002,BrightBridge Consulting 002,Financial Services,SMB,United Kingdom,t,2025-09-05 09:00:00+00,2026-08-28 09:00:00+00
+ACC0003,Vertex Networks 003,Healthcare,Mid-Market,Nigeria,t,2025-09-07 09:00:00+00,2026-08-27 09:00:00+00
+ACC0004,Summit Systems 004,Professional Services,SMB,Canada,t,2025-09-09 09:00:00+00,2026-08-26 09:00:00+00
+ACC0005,ClearPath Finance 005,Logistics,SMB,Germany,t,2025-09-11 09:00:00+00,2026-08-25 09:00:00+00
+ACC0006,Nova Software 006,E-Commerce,Mid-Market,United States,t,2025-09-13 09:00:00+00,2026-08-24 09:00:00+00
+ACC0007,BluePeak Analytics 007,Technology,SMB,United Kingdom,t,2025-09-15 09:00:00+00,2026-08-23 09:00:00+00
+ACC0008,Evergreen Logistics 008,Financial Services,SMB,Nigeria,t,2025-09-17 09:00:00+00,2026-08-22 09:00:00+00
+ACC0009,Horizon Labs 009,Healthcare,Mid-Market,Canada,t,2025-09-19 09:00:00+00,2026-08-21 09:00:00+00
+ACC0010,Atlas Solutions 010,Professional Services,SMB,Germany,t,2025-09-21 09:00:00+00,2026-08-20 09:00:00+00
+ACC0011,Northstar Health 011,Logistics,SMB,United States,t,2025-09-23 09:00:00+00,2026-08-19 09:00:00+00
+ACC0012,BrightBridge Consulting 012,E-Commerce,Mid-Market,United Kingdom,t,2025-09-25 09:00:00+00,2026-08-18 09:00:00+00
+ACC0013,Vertex Networks 013,Technology,SMB,Nigeria,t,2025-09-27 09:00:00+00,2026-08-17 09:00:00+00
+ACC0014,Summit Systems 014,Financial Services,SMB,Canada,t,2025-09-29 09:00:00+00,2026-08-16 09:00:00+00
+ACC0015,ClearPath Finance 015,Healthcare,Mid-Market,Germany,t,2025-10-01 09:00:00+00,2026-08-15 09:00:00+00
+ACC0016,Nova Software 016,Professional Services,SMB,United States,t,2025-10-03 09:00:00+00,2026-08-14 09:00:00+00
+ACC0017,BluePeak Analytics 017,,SMB,United Kingdom,t,2025-10-05 09:00:00+00,2026-08-13 09:00:00+00
+ACC0018,Evergreen Logistics 018,E-Commerce,Mid-Market,Nigeria,t,2025-10-07 09:00:00+00,2026-08-12 09:00:00+00
+ACC0019,Horizon Labs 019,Technology,SMB,Canada,t,2025-10-09 09:00:00+00,2026-08-11 09:00:00+00
+ACC0020,Atlas Solutions 020,Financial Services,SMB,Germany,t,2025-10-11 09:00:00+00,2026-08-10 09:00:00+00
+ACC0021,Northstar Health 021,Healthcare,Mid-Market,United States,t,2025-10-13 09:00:00+00,2026-08-09 09:00:00+00
+ACC0022,BrightBridge Consulting 022,Professional Services,SMB,United Kingdom,t,2025-10-15 09:00:00+00,2026-08-08 09:00:00+00
+ACC0023,Vertex Networks 023,Logistics,SMB,Nigeria,t,2025-10-17 09:00:00+00,2026-08-07 09:00:00+00
+ACC0024,Summit Systems 024,E-Commerce,Mid-Market,Canada,t,2025-10-19 09:00:00+00,2026-08-06 09:00:00+00
+ACC0025,ClearPath Finance 025,Technology,SMB,Germany,t,2025-10-21 09:00:00+00,2026-08-05 09:00:00+00
+ACC0026,Nova Software 026,Financial Services,SMB,United States,t,2025-10-23 09:00:00+00,2026-08-04 09:00:00+00
+ACC0027,BluePeak Analytics 027,Healthcare,Mid-Market,United Kingdom,t,2025-10-25 09:00:00+00,2026-08-03 09:00:00+00
+ACC0028,Evergreen Logistics 028,Professional Services,SMB,Nigeria,t,2025-10-27 09:00:00+00,2026-08-02 09:00:00+00
+ACC0029,Horizon Labs 029,Logistics,SMB,Canada,t,2025-10-29 09:00:00+00,2026-08-01 09:00:00+00
+ACC0030,Atlas Solutions 030,E-Commerce,Mid-Market,Germany,t,2025-10-31 09:00:00+00,2026-08-30 09:00:00+00
+ACC0031,Northstar Health 031,Technology,SMB,United States,t,2025-11-02 09:00:00+00,2026-08-29 09:00:00+00
+ACC0032,BrightBridge Consulting 032,Financial Services,SMB,United Kingdom,t,2025-11-04 09:00:00+00,2026-08-28 09:00:00+00
+ACC0033,Vertex Networks 033,Healthcare,Mid-Market,Nigeria,t,2025-11-06 09:00:00+00,2026-08-27 09:00:00+00
+ACC0034,Summit Systems 034,,SMB,Canada,t,2025-11-08 09:00:00+00,2026-08-26 09:00:00+00
+ACC0035,ClearPath Finance 035,Logistics,SMB,Germany,t,2025-11-10 09:00:00+00,2026-08-25 09:00:00+00
+ACC0036,Nova Software 036,E-Commerce,Mid-Market,United States,t,2025-11-12 09:00:00+00,2026-08-24 09:00:00+00
+ACC0037,BluePeak Analytics 037,Technology,SMB,United Kingdom,f,2025-11-14 09:00:00+00,2026-08-23 09:00:00+00
+ACC0038,Evergreen Logistics 038,Financial Services,SMB,Nigeria,t,2025-11-16 09:00:00+00,2026-08-22 09:00:00+00
+ACC0039,Horizon Labs 039,Healthcare,Mid-Market,Canada,t,2025-11-18 09:00:00+00,2026-08-21 09:00:00+00
+ACC0040,Atlas Solutions 040,Professional Services,SMB,Germany,t,2025-11-20 09:00:00+00,2026-08-20 09:00:00+00
+ACC0041,Northstar Health 041,Logistics,SMB,United States,t,2025-11-22 09:00:00+00,2026-08-19 09:00:00+00
+ACC0042,BrightBridge Consulting 042,E-Commerce,Mid-Market,United Kingdom,t,2025-11-24 09:00:00+00,2026-08-18 09:00:00+00
+ACC0043,Vertex Networks 043,Technology,SMB,Nigeria,t,2025-11-26 09:00:00+00,2026-08-17 09:00:00+00
+ACC0044,Summit Systems 044,Financial Services,SMB,Canada,t,2025-11-28 09:00:00+00,2026-08-16 09:00:00+00
+ACC0045,ClearPath Finance 045,Healthcare,Mid-Market,Germany,t,2025-11-30 09:00:00+00,2026-08-15 09:00:00+00
+ACC0046,Nova Software 046,Professional Services,SMB,United States,t,2025-12-02 09:00:00+00,2026-08-14 09:00:00+00
+ACC0047,BluePeak Analytics 047,Logistics,SMB,United Kingdom,t,2025-12-04 09:00:00+00,2026-08-13 09:00:00+00
+ACC0048,Evergreen Logistics 048,E-Commerce,Mid-Market,Nigeria,t,2025-12-06 09:00:00+00,2026-08-12 09:00:00+00
+ACC0049,Horizon Labs 049,Technology,SMB,Canada,t,2025-12-08 09:00:00+00,2026-08-11 09:00:00+00
+ACC0050,Atlas Solutions 050,Financial Services,SMB,Germany,t,2025-12-10 09:00:00+00,2026-08-10 09:00:00+00
+ACC0051,Northstar Health 051,,Mid-Market,United States,t,2025-12-12 09:00:00+00,2026-08-09 09:00:00+00
+ACC0052,BrightBridge Consulting 052,Professional Services,SMB,United Kingdom,t,2025-12-14 09:00:00+00,2026-08-08 09:00:00+00
+ACC0053,Vertex Networks 053,Logistics,SMB,Nigeria,t,2025-12-16 09:00:00+00,2026-08-07 09:00:00+00
+ACC0054,Summit Systems 054,E-Commerce,Mid-Market,Canada,t,2025-12-18 09:00:00+00,2026-08-06 09:00:00+00
+ACC0055,ClearPath Finance 055,Technology,SMB,Germany,t,2025-12-20 09:00:00+00,2026-08-05 09:00:00+00
+ACC0056,Nova Software 056,Financial Services,SMB,United States,t,2025-12-22 09:00:00+00,2026-08-04 09:00:00+00
+ACC0057,BluePeak Analytics 057,Healthcare,Mid-Market,United Kingdom,t,2025-12-24 09:00:00+00,2026-08-03 09:00:00+00
+ACC0058,Evergreen Logistics 058,Professional Services,SMB,Nigeria,t,2025-12-26 09:00:00+00,2026-08-02 09:00:00+00
+ACC0059,Horizon Labs 059,Logistics,SMB,Canada,t,2025-12-28 09:00:00+00,2026-08-01 09:00:00+00
+ACC0060,Atlas Solutions 060,E-Commerce,Mid-Market,Germany,t,2025-12-30 09:00:00+00,2026-08-30 09:00:00+00
+ACC0061,Northstar Health 061,Technology,SMB,United States,t,2026-01-01 09:00:00+00,2026-08-29 09:00:00+00
+ACC0062,BrightBridge Consulting 062,Financial Services,SMB,United Kingdom,t,2026-01-03 09:00:00+00,2026-08-28 09:00:00+00
+ACC0063,Vertex Networks 063,Healthcare,Mid-Market,Nigeria,t,2026-01-05 09:00:00+00,2026-08-27 09:00:00+00
+ACC0064,Summit Systems 064,Professional Services,SMB,Canada,t,2026-01-07 09:00:00+00,2026-08-26 09:00:00+00
+ACC0065,ClearPath Finance 065,Logistics,SMB,Germany,t,2026-01-09 09:00:00+00,2026-08-25 09:00:00+00
+ACC0066,Nova Software 066,E-Commerce,Mid-Market,United States,t,2026-01-11 09:00:00+00,2026-08-24 09:00:00+00
+ACC0067,BluePeak Analytics 067,Technology,SMB,United Kingdom,t,2026-01-13 09:00:00+00,2026-08-23 09:00:00+00
+ACC0068,Evergreen Logistics 068,,SMB,Nigeria,t,2026-01-15 09:00:00+00,2026-08-22 09:00:00+00
+ACC0069,Horizon Labs 069,Healthcare,Mid-Market,Canada,t,2026-01-17 09:00:00+00,2026-08-21 09:00:00+00
+ACC0070,Atlas Solutions 070,Professional Services,SMB,Germany,t,2026-01-19 09:00:00+00,2026-08-20 09:00:00+00
+ACC0071,Northstar Health 071,Logistics,SMB,United States,t,2026-01-21 09:00:00+00,2026-08-19 09:00:00+00
+ACC0072,BrightBridge Consulting 072,E-Commerce,Mid-Market,United Kingdom,t,2026-01-23 09:00:00+00,2026-08-18 09:00:00+00
+ACC0073,Vertex Networks 073,Technology,SMB,Nigeria,t,2026-01-25 09:00:00+00,2026-08-17 09:00:00+00
+ACC0074,Summit Systems 074,Financial Services,SMB,Canada,f,2026-01-27 09:00:00+00,2026-08-16 09:00:00+00
+ACC0075,ClearPath Finance 075,Healthcare,Mid-Market,Germany,t,2026-01-29 09:00:00+00,2026-08-15 09:00:00+00
+ACC0076,Nova Software 076,Professional Services,SMB,United States,t,2026-01-31 09:00:00+00,2026-08-14 09:00:00+00
+ACC0077,BluePeak Analytics 077,Logistics,SMB,United Kingdom,t,2026-02-02 09:00:00+00,2026-08-13 09:00:00+00
+ACC0078,Evergreen Logistics 078,E-Commerce,Mid-Market,Nigeria,t,2026-02-04 09:00:00+00,2026-08-12 09:00:00+00
+ACC0079,Horizon Labs 079,Technology,SMB,Canada,t,2026-02-06 09:00:00+00,2026-08-11 09:00:00+00
+ACC0080,Atlas Solutions 080,Financial Services,SMB,Germany,t,2026-02-08 09:00:00+00,2026-08-10 09:00:00+00
+ACC0081,Northstar Health 081,Healthcare,Mid-Market,United States,t,2026-02-10 09:00:00+00,2026-08-09 09:00:00+00
+ACC0082,BrightBridge Consulting 082,Professional Services,SMB,United Kingdom,t,2026-02-12 09:00:00+00,2026-08-08 09:00:00+00
+ACC0083,Vertex Networks 083,Logistics,SMB,Nigeria,t,2026-02-14 09:00:00+00,2026-08-07 09:00:00+00
+ACC0084,Summit Systems 084,E-Commerce,Mid-Market,Canada,t,2026-02-16 09:00:00+00,2026-08-06 09:00:00+00
+ACC0085,ClearPath Finance 085,,SMB,Germany,t,2026-02-18 09:00:00+00,2026-08-05 09:00:00+00
+ACC0086,Nova Software 086,Financial Services,SMB,United States,t,2026-02-20 09:00:00+00,2026-08-04 09:00:00+00
+ACC0087,BluePeak Analytics 087,Healthcare,Mid-Market,United Kingdom,t,2026-02-22 09:00:00+00,2026-08-03 09:00:00+00
+ACC0088,Evergreen Logistics 088,Professional Services,SMB,Nigeria,t,2026-02-24 09:00:00+00,2026-08-02 09:00:00+00
+ACC0089,Horizon Labs 089,Logistics,SMB,Canada,t,2026-02-26 09:00:00+00,2026-08-01 09:00:00+00
+ACC0090,Atlas Solutions 090,E-Commerce,Mid-Market,Germany,t,2026-02-28 09:00:00+00,2026-08-30 09:00:00+00
+ACC0091,Northstar Health 091,Technology,SMB,United States,t,2026-03-02 09:00:00+00,2026-08-29 09:00:00+00
+ACC0092,BrightBridge Consulting 092,Financial Services,SMB,United Kingdom,t,2026-03-04 09:00:00+00,2026-08-28 09:00:00+00
+ACC0093,Vertex Networks 093,Healthcare,Mid-Market,Nigeria,t,2026-03-06 09:00:00+00,2026-08-27 09:00:00+00
+ACC0094,Summit Systems 094,Professional Services,SMB,Canada,t,2026-03-08 09:00:00+00,2026-08-26 09:00:00+00
+ACC0095,ClearPath Finance 095,Logistics,SMB,Germany,t,2026-03-10 09:00:00+00,2026-08-25 09:00:00+00
+ACC0096,Nova Software 096,E-Commerce,Mid-Market,United States,t,2026-03-12 09:00:00+00,2026-08-24 09:00:00+00
+ACC0097,BluePeak Analytics 097,Technology,SMB,United Kingdom,t,2026-03-14 09:00:00+00,2026-08-23 09:00:00+00
+ACC0098,Evergreen Logistics 098,Financial Services,SMB,Nigeria,t,2026-03-16 09:00:00+00,2026-08-22 09:00:00+00
+ACC0099,Horizon Labs 099,Healthcare,Mid-Market,Canada,t,2026-03-18 09:00:00+00,2026-08-21 09:00:00+00
+ACC0100,Atlas Solutions 100,Professional Services,SMB,Germany,t,2026-03-20 09:00:00+00,2026-08-20 09:00:00+00
+ACC0101,Northstar Health 101,Logistics,SMB,United States,t,2026-03-22 09:00:00+00,2026-08-19 09:00:00+00
+ACC0102,BrightBridge Consulting 102,,Mid-Market,United Kingdom,t,2026-03-24 09:00:00+00,2026-08-18 09:00:00+00
+ACC0103,Vertex Networks 103,Technology,SMB,Nigeria,t,2026-03-26 09:00:00+00,2026-08-17 09:00:00+00
+ACC0104,Summit Systems 104,Financial Services,SMB,Canada,t,2026-03-28 09:00:00+00,2026-08-16 09:00:00+00
+ACC0105,ClearPath Finance 105,Healthcare,Mid-Market,Germany,t,2026-03-30 09:00:00+00,2026-08-15 09:00:00+00
+ACC0106,Nova Software 106,Professional Services,SMB,United States,t,2026-04-01 09:00:00+00,2026-08-14 09:00:00+00
+ACC0107,BluePeak Analytics 107,Logistics,SMB,United Kingdom,t,2026-04-03 09:00:00+00,2026-08-13 09:00:00+00
+ACC0108,Evergreen Logistics 108,E-Commerce,Mid-Market,Nigeria,t,2026-04-05 09:00:00+00,2026-08-12 09:00:00+00
+ACC0109,Horizon Labs 109,Technology,SMB,Canada,t,2026-04-07 09:00:00+00,2026-08-11 09:00:00+00
+ACC0110,Atlas Solutions 110,Financial Services,SMB,Germany,t,2026-04-09 09:00:00+00,2026-08-10 09:00:00+00
+ACC0111,Northstar Health 111,Healthcare,Mid-Market,United States,f,2026-04-11 09:00:00+00,2026-08-09 09:00:00+00
+ACC0112,BrightBridge Consulting 112,Professional Services,SMB,United Kingdom,t,2026-04-13 09:00:00+00,2026-08-08 09:00:00+00
+ACC0113,Vertex Networks 113,Logistics,SMB,Nigeria,t,2026-04-15 09:00:00+00,2026-08-07 09:00:00+00
+ACC0114,Summit Systems 114,E-Commerce,Mid-Market,Canada,t,2026-04-17 09:00:00+00,2026-08-06 09:00:00+00
+ACC0115,ClearPath Finance 115,Technology,SMB,Germany,t,2026-04-19 09:00:00+00,2026-08-05 09:00:00+00
+ACC0116,Nova Software 116,Financial Services,SMB,United States,t,2026-04-21 09:00:00+00,2026-08-04 09:00:00+00
+ACC0117,BluePeak Analytics 117,Healthcare,Mid-Market,United Kingdom,t,2026-04-23 09:00:00+00,2026-08-03 09:00:00+00
+ACC0118,Evergreen Logistics 118,Professional Services,SMB,Nigeria,t,2026-04-25 09:00:00+00,2026-08-02 09:00:00+00
+ACC0119,Horizon Labs 119,,SMB,Canada,t,2026-04-27 09:00:00+00,2026-08-01 09:00:00+00
+ACC0120,Atlas Solutions 120,E-Commerce,Mid-Market,Germany,t,2026-04-29 09:00:00+00,2026-08-30 09:00:00+00
+ACC0121,Northstar Health 121,Technology,SMB,United States,t,2026-05-01 09:00:00+00,2026-08-29 09:00:00+00
+ACC0122,BrightBridge Consulting 122,Financial Services,SMB,United Kingdom,t,2026-05-03 09:00:00+00,2026-08-28 09:00:00+00
+ACC0123,Vertex Networks 123,Healthcare,Mid-Market,Nigeria,t,2026-05-05 09:00:00+00,2026-08-27 09:00:00+00
+ACC0124,Summit Systems 124,Professional Services,SMB,Canada,t,2026-05-07 09:00:00+00,2026-08-26 09:00:00+00
+ACC0125,ClearPath Finance 125,Logistics,SMB,Germany,t,2026-05-09 09:00:00+00,2026-08-25 09:00:00+00
+ACC0126,Nova Software 126,E-Commerce,Mid-Market,United States,t,2026-05-11 09:00:00+00,2026-08-24 09:00:00+00
+ACC0127,BluePeak Analytics 127,Technology,SMB,United Kingdom,t,2026-05-13 09:00:00+00,2026-08-23 09:00:00+00
+ACC0128,Evergreen Logistics 128,Financial Services,SMB,Nigeria,t,2026-05-15 09:00:00+00,2026-08-22 09:00:00+00
+ACC0129,Horizon Labs 129,Healthcare,Mid-Market,Canada,t,2026-05-17 09:00:00+00,2026-08-21 09:00:00+00
+ACC0130,Atlas Solutions 130,Professional Services,SMB,Germany,t,2026-05-19 09:00:00+00,2026-08-20 09:00:00+00
+ACC0131,Northstar Health 131,Logistics,SMB,United States,t,2026-05-21 09:00:00+00,2026-08-19 09:00:00+00
+ACC0132,BrightBridge Consulting 132,E-Commerce,Mid-Market,United Kingdom,t,2026-05-23 09:00:00+00,2026-08-18 09:00:00+00
+ACC0133,Vertex Networks 133,Technology,SMB,Nigeria,t,2026-05-25 09:00:00+00,2026-08-17 09:00:00+00
+ACC0134,Summit Systems 134,Financial Services,SMB,Canada,t,2026-05-27 09:00:00+00,2026-08-16 09:00:00+00
+ACC0135,ClearPath Finance 135,Healthcare,Mid-Market,Germany,t,2026-05-29 09:00:00+00,2026-08-15 09:00:00+00
+ACC0136,Nova Software 136,,SMB,United States,t,2026-05-31 09:00:00+00,2026-08-14 09:00:00+00
+ACC0137,BluePeak Analytics 137,Logistics,SMB,United Kingdom,t,2026-06-02 09:00:00+00,2026-08-13 09:00:00+00
+ACC0138,Evergreen Logistics 138,E-Commerce,Mid-Market,Nigeria,t,2026-06-04 09:00:00+00,2026-08-12 09:00:00+00
+ACC0139,Horizon Labs 139,Technology,SMB,Canada,t,2026-06-06 09:00:00+00,2026-08-11 09:00:00+00
+ACC0140,Atlas Solutions 140,Financial Services,SMB,Germany,t,2026-06-08 09:00:00+00,2026-08-10 09:00:00+00
+ACC0141,Northstar Health 141,Healthcare,Mid-Market,United States,t,2026-06-10 09:00:00+00,2026-08-09 09:00:00+00
+ACC0142,BrightBridge Consulting 142,Professional Services,SMB,United Kingdom,t,2026-06-12 09:00:00+00,2026-08-08 09:00:00+00
+ACC0143,Vertex Networks 143,Logistics,SMB,Nigeria,t,2026-06-14 09:00:00+00,2026-08-07 09:00:00+00
+ACC0144,Summit Systems 144,E-Commerce,Mid-Market,Canada,t,2026-06-16 09:00:00+00,2026-08-06 09:00:00+00
+ACC0145,ClearPath Finance 145,Technology,SMB,Germany,t,2026-06-18 09:00:00+00,2026-08-05 09:00:00+00
+ACC0146,Nova Software 146,Financial Services,SMB,United States,t,2026-06-20 09:00:00+00,2026-08-04 09:00:00+00
+ACC0147,BluePeak Analytics 147,Healthcare,Mid-Market,United Kingdom,t,2026-06-22 09:00:00+00,2026-08-03 09:00:00+00
+ACC0148,Evergreen Logistics 148,Professional Services,SMB,Nigeria,f,2026-06-24 09:00:00+00,2026-08-02 09:00:00+00
+ACC0149,Horizon Labs 149,Logistics,SMB,Canada,t,2026-06-26 09:00:00+00,2026-08-01 09:00:00+00
+ACC0150,Atlas Solutions 150,E-Commerce,Mid-Market,Germany,t,2026-06-28 09:00:00+00,2026-08-30 09:00:00+00

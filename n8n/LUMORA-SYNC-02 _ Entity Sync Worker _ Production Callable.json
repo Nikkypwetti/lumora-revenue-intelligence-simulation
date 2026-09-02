@@ -1,0 +1,2371 @@
+{
+  "name": "LUMORA-SYNC-02 | Entity Sync Worker | Production Callable",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "fc16dbbc-4978-4602-9ac0-3b970e4384a8",
+      "name": "ESYNC-001 | Manual Entity Sync Test",
+      "notes": "COMPONENT ID\nESYNC-001\n\nNODE NAME\nESYNC-001 | Manual Entity Sync Test\n\nNODE TYPE\nManual Trigger\n\nSTAGE\nStage 8G.4 \u2014 Reusable Entity Sync Worker\n\nPURPOSE\nProvides the controlled development entry point for the new reusable entity-sync worker.\n\nRESPONSIBILITY\nStarts one intentional test execution.\n\nAUTHORIZED INPUT\nManual workflow execution by the operator.\n\nSECURITY BOUNDARY\nNo public endpoint.\nNo manager input.\nNo database access.\nNo credential access.\n\nOUTPUT\nOne execution signal to the deterministic entity configuration node.\n\nNO AI\nNO SQL\nNO DATABASE ACCESS\nNO EXTERNAL API\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nShared control behavior verified with crm.sales_reps, crm.accounts, and crm.contacts. crm.activities pending Stage 8G.4 runtime verification."
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { entity_key: 'planning.sales_targets' } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ],
+      "id": "725eb5df-1726-459f-897d-5bd52ba4db91",
+      "name": "ESYNC-002 | Configure Test Entity",
+      "notes": "COMPONENT ID\nESYNC-002\n\nNODE NAME\nESYNC-002 | Configure Test Entity\n\nNODE TYPE\nCode\n\nSTAGE\nStage 8G.9 \u2014 Reusable Entity Sync Worker\n\nPURPOSE\nSelects the single allowlisted entity used by this controlled Stage 8G.9 test.\n\nCURRENT TEST ENTITY\nplanning.sales_targets\n\nSUPPORTED WORKER ENTITIES\ncrm.sales_reps\ncrm.accounts\ncrm.contacts\ncrm.activities\nmarketing.campaigns\nmarketing.leads\nbilling.invoices\nbilling.payments\nplanning.sales_targets\n\nRESPONSIBILITY\nEmits a deterministic entity_key for downstream parameterized control SQL and fixed entity-routing branches.\n\nSECURITY CONTRACT\nThe test entity is hardcoded by the workflow, not accepted from manager or external input.\nOnly explicit allowlisted entity branches contain source extraction and raw upsert SQL. Runtime values never select arbitrary SQL identifiers.\n\nOUTPUT\nentity_key = planning.sales_targets\n\nNO AI\nNO DATABASE ACCESS\nNO DYNAMIC SQL\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nEntities through billing.payments are runtime verified. planning.sales_targets added from verified source/raw/checkpoint preflight and pending Stage 8G.9 runtime verification."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH new_run AS (\n    INSERT INTO ingestion.sync_runs (\n        workflow_execution_id,\n        sync_scope,\n        run_status,\n        run_metadata\n    )\n    VALUES (\n        $1,\n        $3::TEXT,\n        'running',\n        jsonb_build_object(\n            'entity_key', $3::TEXT,\n            'trigger_type', 'manual',\n            'workflow_name', $2,\n            'sync_version', '2.0'\n        )\n    )\n    RETURNING run_id, started_at\n),\nnew_entity_run AS (\n    INSERT INTO ingestion.sync_run_entities (\n        run_id,\n        entity_key,\n        entity_status\n    )\n    SELECT\n        run_id,\n        $3::TEXT,\n        'running'\n    FROM new_run\n    RETURNING entity_run_id, run_id, started_at\n)\nSELECT\n    nr.run_id,\n    ner.entity_run_id,\n    $3::TEXT AS entity_key,\n    nr.started_at AS run_started_at,\n    'running'::TEXT AS run_status,\n    'entity_sync_run_started'::TEXT AS workflow_stage\nFROM new_run nr\nJOIN new_entity_run ner ON ner.run_id = nr.run_id;",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $execution.id,\n  $workflow.name,\n  $json.entity_key\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        448,
+        0
+      ],
+      "id": "fe0935b8-9ca5-4f80-a275-7f837fb4ff76",
+      "name": "ESYNC-003 | Start Entity Sync Run",
+      "credentials": {
+        "postgres": {
+          "id": "49PPUUns3Rf0L3VK",
+          "name": "LUMORA | Ingestion RW"
+        }
+      },
+      "notes": "COMPONENT ID\nESYNC-003\n\nNODE NAME\nESYNC-003 | Start Entity Sync Run\n\nNODE TYPE\nPostgres \u2014 Execute Query\n\nSTAGE\nStage 8G.4 \u2014 Reusable Entity Sync Worker\n\nPURPOSE\nCreates authoritative control rows for one entity sync execution.\n\nAUTHORIZED INPUT\nn8n execution ID\nworkflow name\nallowlisted entity_key\n\nCREDENTIAL\nLUMORA | Ingestion RW\n\nDATABASE\nlumora_revenue_simulation\n\nAUTHORIZED TABLES\ningestion.sync_runs\ningestion.sync_run_entities\n\nSQL CONTRACT\nAll runtime values are bound parameters.\nThe current test entity is crm.accounts; the worker also retains the previously verified crm.sales_reps branch.\nInitial run and entity status are running.\n\nSECURITY BOUNDARY\nNo source-system writes.\nNo reporting access.\nNo runtime-selected SQL identifier.\n\nOUTPUT\nrun_id\nentity_run_id\nentity_key\nrun_started_at\nrun_status\nworkflow_stage\n\nFAILURE BEHAVIOR\nA database failure stops before checkpoint access or source extraction.\n\nNO AI\nNO ARBITRARY SQL\nNO SOURCE WRITE\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nShared control behavior verified with crm.sales_reps, crm.accounts, and crm.contacts. crm.activities pending Stage 8G.4 runtime verification."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n    $3::TEXT AS requested_entity_key,\n    cp.entity_key,\n    cp.source_database,\n    cp.source_schema,\n    cp.source_table,\n    cp.target_schema,\n    cp.target_table,\n    cp.primary_key_column,\n    cp.watermark_column,\n    cp.last_watermark::text AS last_watermark,\n    cp.last_primary_key,\n    cp.checkpoint_status,\n    cp.claimed_run_id,\n    (\n        cp.entity_key = $3::TEXT\n        AND (\n            (\n                cp.entity_key = 'crm.sales_reps'\n                AND cp.source_database = 'lumora_source_systems'\n                AND cp.source_schema = 'crm'\n                AND cp.source_table = 'sales_reps'\n                AND cp.target_schema = 'raw_crm'\n                AND cp.target_table = 'sales_reps'\n                AND cp.primary_key_column = 'rep_id'\n                AND cp.watermark_column = 'source_updated_at'\n            )\n            OR\n            (\n                cp.entity_key = 'crm.accounts'\n                AND cp.source_database = 'lumora_source_systems'\n                AND cp.source_schema = 'crm'\n                AND cp.source_table = 'accounts'\n                AND cp.target_schema = 'raw_crm'\n                AND cp.target_table = 'accounts'\n                AND cp.primary_key_column = 'account_id'\n                AND cp.watermark_column = 'source_updated_at'\n            )\n            OR\n            (\n                cp.entity_key = 'crm.contacts'\n                AND cp.source_database = 'lumora_source_systems'\n                AND cp.source_schema = 'crm'\n                AND cp.source_table = 'contacts'\n                AND cp.target_schema = 'raw_crm'\n                AND cp.target_table = 'contacts'\n                AND cp.primary_key_column = 'contact_id'\n                AND cp.watermark_column = 'source_updated_at'\n            )\n            OR\n            (\n                cp.entity_key = 'crm.deals'\n                AND cp.source_database = 'lumora_source_systems'\n                AND cp.source_schema = 'crm'\n                AND cp.source_table = 'deals'\n                AND cp.target_schema = 'raw_crm'\n                AND cp.target_table = 'deals'\n                AND cp.primary_key_column = 'deal_id'\n                AND cp.watermark_column = 'source_updated_at'\n            )\n            OR\n            (\n                cp.entity_key = 'crm.activities'\n                AND cp.source_database = 'lumora_source_systems'\n                AND cp.source_schema = 'crm'\n                AND cp.source_table = 'activities'\n                AND cp.target_schema = 'raw_crm'\n                AND cp.target_table = 'activities'\n                AND cp.primary_key_column = 'activity_id'\n                AND cp.watermark_column = 'source_updated_at'\n            )\n            OR\n            (\n                cp.entity_key = 'marketing.campaigns'\n                AND cp.source_database = 'lumora_source_systems'\n                AND cp.source_schema = 'marketing'\n                AND cp.source_table = 'campaigns'\n                AND cp.target_schema = 'raw_marketing'\n                AND cp.target_table = 'campaigns'\n                AND cp.primary_key_column = 'campaign_id'\n                AND cp.watermark_column = 'source_updated_at'\n            )\n            OR\n            (\n                cp.entity_key = 'marketing.leads'\n                AND cp.source_database = 'lumora_source_systems'\n                AND cp.source_schema = 'marketing'\n                AND cp.source_table = 'leads'\n                AND cp.target_schema = 'raw_marketing'\n                AND cp.target_table = 'leads'\n                AND cp.primary_key_column = 'lead_id'\n                AND cp.watermark_column = 'source_updated_at'\n            )\n            OR\n            (\n                cp.entity_key = 'billing.invoices'\n                AND cp.source_database = 'lumora_source_systems'\n                AND cp.source_schema = 'billing'\n                AND cp.source_table = 'invoices'\n                AND cp.target_schema = 'raw_billing'\n                AND cp.target_table = 'invoices'\n                AND cp.primary_key_column = 'invoice_id'\n                AND cp.watermark_column = 'source_updated_at'\n            )\n            OR\n            (\n                cp.entity_key = 'billing.payments'\n                AND cp.source_database = 'lumora_source_systems'\n                AND cp.source_schema = 'billing'\n                AND cp.source_table = 'payments'\n                AND cp.target_schema = 'raw_billing'\n                AND cp.target_table = 'payments'\n                AND cp.primary_key_column = 'payment_id'\n                AND cp.watermark_column = 'source_updated_at'\n            )\n            OR\n            (\n                cp.entity_key = 'planning.sales_targets'\n                AND cp.source_database = 'lumora_source_systems'\n                AND cp.source_schema = 'planning'\n                AND cp.source_table = 'sales_targets'\n                AND cp.target_schema = 'raw_planning'\n                AND cp.target_table = 'sales_targets'\n                AND cp.primary_key_column = 'target_id'\n                AND cp.watermark_column = 'source_updated_at'\n            )\n        )\n        AND cp.checkpoint_status = 'ready'\n        AND cp.claimed_run_id IS NULL\n        AND cp.last_watermark IS NOT NULL\n        AND cp.last_primary_key IS NOT NULL\n    ) AS checkpoint_ready,\n    'entity_checkpoint_loaded'::TEXT AS workflow_stage\nFROM (SELECT 1 AS anchor) base\nLEFT JOIN ingestion.sync_checkpoints cp\n    ON cp.entity_key = $3::TEXT;",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $json.run_id,\n  $json.entity_run_id,\n  $json.entity_key\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        672,
+        0
+      ],
+      "id": "ca2bd9b5-9621-4ae2-ae84-8fb1c4130806",
+      "name": "ESYNC-004 | Load Entity Checkpoint",
+      "credentials": {
+        "postgres": {
+          "id": "49PPUUns3Rf0L3VK",
+          "name": "LUMORA | Ingestion RW"
+        }
+      },
+      "notes": "COMPONENT ID\nESYNC-004\n\nNODE NAME\nESYNC-004 | Load Entity Checkpoint\n\nNODE TYPE\nPostgres \u2014 Execute Query\n\nSTAGE\nStage 8G.7 \u2014 Reusable Entity Sync Worker\n\nPURPOSE\nLoads and validates the governed composite checkpoint for the requested entity against a fixed deterministic allowlist.\n\nALLOWLISTED CONTRACTS\n1. crm.sales_reps \u2192 lumora_source_systems.crm.sales_reps \u2192 raw_crm.sales_reps | PK rep_id | watermark source_updated_at\n2. crm.accounts \u2192 lumora_source_systems.crm.accounts \u2192 raw_crm.accounts | PK account_id | watermark source_updated_at\n3. crm.contacts \u2192 lumora_source_systems.crm.contacts \u2192 raw_crm.contacts | PK contact_id | watermark source_updated_at\n4. crm.activities \u2192 lumora_source_systems.crm.activities \u2192 raw_crm.activities | PK activity_id | watermark source_updated_at\n5. marketing.campaigns \u2192 lumora_source_systems.marketing.campaigns \u2192 raw_marketing.campaigns | PK campaign_id | watermark source_updated_at\n6. marketing.leads \u2192 lumora_source_systems.marketing.leads \u2192 raw_marketing.leads | PK lead_id | watermark source_updated_at\n7. billing.invoices \u2192 lumora_source_systems.billing.invoices \u2192 raw_billing.invoices | PK invoice_id | watermark source_updated_at\n\nCREDENTIAL\nLUMORA | Ingestion RW\n\nCHECKPOINT READY REQUIRES\nExact allowlisted entity/source/target metadata match\ncheckpoint_status = ready\nclaimed_run_id IS NULL\nnon-null last_watermark\nnon-null last_primary_key\n\nTIMESTAMP PRECISION\nWatermark crosses n8n as PostgreSQL TEXT and is cast back inside PostgreSQL later.\n\nSECURITY BOUNDARY\nRuntime input cannot choose arbitrary database, schema, table, primary-key column, watermark column, SQL statement, or credential. A checkpoint outside the explicit allowlist fails closed before ownership acquisition.\n\nNO AI\nNO ARBITRARY SQL\nNO CHECKPOINT UPDATE\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nContracts through marketing.leads are runtime verified. billing.invoices contract added from verified source/raw/checkpoint preflight and pending Stage 8G.7 runtime verification.\n\nSTAGE 8G.9 ALLOWLIST EXTENSION\nAlso admits only the exact verified contracts for billing.payments and planning.sales_targets. Unknown metadata fails checkpoint_ready.\nNO DYNAMIC IDENTIFIERS. NO ARBITRARY SQL. NO SECRET IN NOTES."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "e0889b39-d803-473b-b20d-8cb4fd1f81dc",
+              "leftValue": "={{ $json.checkpoint_ready }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        896,
+        0
+      ],
+      "id": "40e36566-ffc5-4792-9135-541658ef2605",
+      "name": "ESYNC-005 | Checkpoint Ready?",
+      "notes": "COMPONENT ID\nESYNC-005\n\nNODE NAME\nESYNC-005 | Checkpoint Ready?\n\nNODE TYPE\nIF\n\nSTAGE\nStage 8G.4 \u2014 Reusable Entity Sync Worker\n\nPURPOSE\nFail-closed checkpoint gate before ownership acquisition.\n\nTRUE\nValidated checkpoint is ready and ownerless.\n\nFALSE\nCheckpoint missing, invalid, already owned, or metadata contract mismatch.\n\nTRUE PATH\nESYNC-006 | Claim Entity Checkpoint\n\nFALSE PATH\nESYNC-015 | Finalize Checkpoint Gate Failure\n\nNO AI\nNO SQL\nNO DATABASE ACCESS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nShared control behavior verified with crm.sales_reps, crm.accounts, and crm.contacts. crm.activities pending Stage 8G.4 runtime verification."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH claimed AS (\n    UPDATE ingestion.sync_checkpoints sc\n    SET\n        checkpoint_status = 'running',\n        claimed_run_id = $1::BIGINT,\n        updated_at = NOW()\n    WHERE sc.entity_key = $5::TEXT\n      AND sc.checkpoint_status = 'ready'\n      AND sc.claimed_run_id IS NULL\n      AND sc.last_watermark = $3::TIMESTAMPTZ\n      AND sc.last_primary_key = $4::TEXT\n      AND EXISTS (\n          SELECT 1\n          FROM ingestion.sync_runs sr\n          WHERE sr.run_id = $1::BIGINT\n            AND sr.run_status = 'running'\n            AND sr.sync_scope = $5::TEXT\n      )\n      AND EXISTS (\n          SELECT 1\n          FROM ingestion.sync_run_entities sre\n          WHERE sre.entity_run_id = $2::BIGINT\n            AND sre.run_id = $1::BIGINT\n            AND sre.entity_key = $5::TEXT\n            AND sre.entity_status = 'running'\n      )\n    RETURNING\n        sc.entity_key,\n        sc.source_database,\n        sc.source_schema,\n        sc.source_table,\n        sc.target_schema,\n        sc.target_table,\n        sc.primary_key_column,\n        sc.watermark_column,\n        sc.last_watermark::text AS last_watermark,\n        sc.last_primary_key,\n        sc.checkpoint_status,\n        sc.claimed_run_id\n)\nSELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n    $5::TEXT AS entity_key,\n    c.source_database,\n    c.source_schema,\n    c.source_table,\n    c.target_schema,\n    c.target_table,\n    c.primary_key_column,\n    c.watermark_column,\n    c.last_watermark,\n    c.last_primary_key,\n    COALESCE(c.checkpoint_status, 'not_claimed') AS checkpoint_status,\n    c.claimed_run_id,\n    (c.entity_key IS NOT NULL) AS checkpoint_claimed,\n    'entity_checkpoint_claim_attempted'::TEXT AS workflow_stage\nFROM (SELECT 1 AS anchor) a\nLEFT JOIN claimed c ON TRUE;",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $json.run_id,\n  $json.entity_run_id,\n  $json.last_watermark,\n  $json.last_primary_key,\n  $json.entity_key\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1120,
+        -96
+      ],
+      "id": "32494cf4-5005-4855-9d20-ed430bddac25",
+      "name": "ESYNC-006 | Claim Entity Checkpoint",
+      "credentials": {
+        "postgres": {
+          "id": "49PPUUns3Rf0L3VK",
+          "name": "LUMORA | Ingestion RW"
+        }
+      },
+      "notes": "COMPONENT ID\nESYNC-006\n\nNODE NAME\nESYNC-006 | Claim Entity Checkpoint\n\nNODE TYPE\nPostgres \u2014 Execute Query\n\nSTAGE\nStage 8G.4 \u2014 Reusable Entity Sync Worker\n\nPURPOSE\nAtomically acquires ownership of the requested entity checkpoint.\n\nCREDENTIAL\nLUMORA | Ingestion RW\n\nOWNERSHIP CONTRACT\nready + claimed_run_id NULL\n\u2192 running + claimed_run_id = current run_id\n\nCLAIM REQUIRES\nexact old composite cursor\nactive current sync run\nmatching active entity run\nmatching entity_key\n\nSECURITY BOUNDARY\nA run can claim only the entity checkpoint it was created for.\nNo cross-run claim release.\nNo cursor advancement.\nNo source write.\n\nOUTPUT\ncheckpoint_claimed\nclaimed_run_id\nexact composite cursor\ngoverned metadata\n\nNO AI\nNO ARBITRARY SQL\nNO REPORTING ACCESS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nShared control behavior verified with crm.sales_reps, crm.accounts, and crm.contacts. crm.activities pending Stage 8G.4 runtime verification."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "42f5aa5c-4025-435a-8187-87176bae3486",
+              "leftValue": "={{ $json.checkpoint_claimed }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1344,
+        -96
+      ],
+      "id": "0dde10ef-f2f7-4931-a68f-465e62b1c114",
+      "name": "ESYNC-007 | Checkpoint Claimed?",
+      "notes": "COMPONENT ID\nESYNC-007\n\nNODE NAME\nESYNC-007 | Checkpoint Claimed?\n\nNODE TYPE\nIF\n\nSTAGE\nStage 8G.4 \u2014 Reusable Entity Sync Worker\n\nPURPOSE\nBlocks source extraction unless checkpoint ownership was atomically acquired.\n\nTRUE PATH\nESYNC-019 | Route Source Entity\n\nFALSE PATH\nESYNC-016 | Finalize Claim Failure\n\nSECURITY BOUNDARY\nNo source query executes from the FALSE branch.\n\nNO AI\nNO SQL\nNO DATABASE ACCESS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nShared control behavior verified with crm.sales_reps, crm.accounts, and crm.contacts. crm.activities pending Stage 8G.4 runtime verification."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH changed AS (\n    SELECT\n        rep_id,\n        full_name,\n        email,\n        team,\n        manager_id,\n        region,\n        employment_status,\n        hire_date,\n        monthly_quota_default,\n        source_created_at,\n        source_updated_at\n    FROM crm.sales_reps\n    WHERE $5::TEXT = 'crm.sales_reps'\n      AND (\n          source_updated_at > $3::TIMESTAMPTZ\n          OR (\n              source_updated_at = $3::TIMESTAMPTZ\n              AND rep_id > $4::TEXT\n          )\n      )\n    ORDER BY source_updated_at, rep_id\n    LIMIT 100\n),\naggregated AS (\n    SELECT\n        COUNT(*)::INTEGER AS rows_extracted,\n        COALESCE(\n            jsonb_agg(\n                to_jsonb(c)\n                ORDER BY c.source_updated_at, c.rep_id\n            ),\n            '[]'::JSONB\n        ) AS changed_rows\n    FROM changed c\n),\nlast_row AS (\n    SELECT source_updated_at, rep_id\n    FROM changed\n    ORDER BY source_updated_at DESC, rep_id DESC\n    LIMIT 1\n)\nSELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n    $5::TEXT AS entity_key,\n    $3::TEXT AS start_watermark,\n    $4::TEXT AS start_primary_key,\n    a.rows_extracted,\n    a.changed_rows,\n    lr.source_updated_at::text AS candidate_end_watermark,\n    lr.rep_id AS candidate_end_primary_key,\n    (a.rows_extracted > 0) AS changes_found,\n    'entity_source_extraction_complete'::TEXT AS workflow_stage\nFROM aggregated a\nLEFT JOIN last_row lr ON TRUE;",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $json.run_id,\n  $json.entity_run_id,\n  $json.last_watermark,\n  $json.last_primary_key,\n  $json.entity_key\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2016,
+        -192
+      ],
+      "id": "0259d43d-47fb-4e56-b406-f7df58fa36b0",
+      "name": "ESYNC-008 | Extract Sales Reps Batch",
+      "credentials": {
+        "postgres": {
+          "id": "g17VKfn4L7IiJ4bk",
+          "name": "LUMORA | Source RO"
+        }
+      },
+      "notes": "COMPONENT ID\nESYNC-008\n\nNODE NAME\nESYNC-008 | Extract Sales Reps Batch\n\nNODE TYPE\nPostgres \u2014 Execute Query\n\nSTAGE\nStage 8G.1 \u2014 crm.sales_reps Incremental Extraction\n\nPURPOSE\nReads only sales-rep rows newer than the committed composite cursor.\n\nCREDENTIAL\nLUMORA | Source RO\n\nDATABASE\nlumora_source_systems\n\nAUTHORIZED SOURCE\ncrm.sales_reps\n\nCURSOR\n(source_updated_at, rep_id)\n\nPREDICATE\nsource_updated_at > last_watermark\nOR source_updated_at = last_watermark AND rep_id > last_primary_key\n\nORDER\nsource_updated_at ASC, rep_id ASC\n\nBATCH LIMIT\n100\n\nOUTPUT CONTRACT\nchanged_rows is a standardized JSONB array for downstream entity upsert logic.\nCandidate ending cursor is returned as exact PostgreSQL text.\n\nSECURITY BOUNDARY\nThe source table is fixed in SQL.\nentity_key must equal crm.sales_reps.\nSource credential is read-only.\nNo dynamic identifier substitution.\n\nNO AI\nNO ARBITRARY SQL\nNO SOURCE WRITE\nNO TARGET ACCESS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nVerified in Stage 8G.1 including positive extraction and no-change replay."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ac07fc1d-6173-4f56-ad28-886189ae6ea9",
+              "leftValue": "={{ $json.changes_found }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2240,
+        -192
+      ],
+      "id": "dad53c88-4636-4546-888a-b965e21ef67a",
+      "name": "ESYNC-009 | Changes Found?",
+      "notes": "COMPONENT ID\nESYNC-009\n\nNODE NAME\nESYNC-009 | Changes Found?\n\nNODE TYPE\nIF\n\nSTAGE\nStage 8G.7 \u2014 Reusable Entity Sync Worker\n\nPURPOSE\nSeparates valid no-change completion from entity-specific changed-row persistence.\n\nTRUE\nOne or more source rows were extracted \u2192 ESYNC-022 | Route Target Entity.\n\nFALSE\nZero rows were extracted \u2192 ESYNC-010 | Complete No-Change Entity Run.\n\nSECURITY BOUNDARY\nThe FALSE path cannot write raw data or advance the checkpoint. The TRUE path must pass through a fixed allowlisted target route before any raw upsert.\n\nNO AI\nNO SQL\nNO DATABASE ACCESS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nNo-change behavior verified through marketing.campaigns. marketing.leads pending Stage 8G.7 runtime verification."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH released AS (\n    UPDATE ingestion.sync_checkpoints sc\n    SET\n        checkpoint_status = 'ready',\n        claimed_run_id = NULL,\n        last_synced_at = NOW(),\n        updated_at = NOW()\n    WHERE sc.entity_key = $5::TEXT\n      AND sc.checkpoint_status = 'running'\n      AND sc.claimed_run_id = $1::BIGINT\n      AND sc.last_watermark = $3::TIMESTAMPTZ\n      AND sc.last_primary_key = $4::TEXT\n      AND EXISTS (\n          SELECT 1 FROM ingestion.sync_runs sr\n          WHERE sr.run_id = $1::BIGINT\n            AND sr.run_status = 'running'\n            AND sr.sync_scope = $5::TEXT\n      )\n      AND EXISTS (\n          SELECT 1 FROM ingestion.sync_run_entities sre\n          WHERE sre.entity_run_id = $2::BIGINT\n            AND sre.run_id = $1::BIGINT\n            AND sre.entity_key = $5::TEXT\n            AND sre.entity_status = 'running'\n      )\n    RETURNING sc.entity_key, sc.last_watermark::text AS last_watermark, sc.last_primary_key\n),\nentity_done AS (\n    UPDATE ingestion.sync_run_entities\n    SET\n        start_watermark = $3::TIMESTAMPTZ,\n        start_primary_key = $4::TEXT,\n        end_watermark = $3::TIMESTAMPTZ,\n        end_primary_key = $4::TEXT,\n        rows_extracted = 0,\n        rows_upserted = 0,\n        entity_status = 'succeeded',\n        error_message = NULL,\n        completed_at = NOW()\n    WHERE entity_run_id = $2::BIGINT\n      AND run_id = $1::BIGINT\n      AND entity_key = $5::TEXT\n      AND entity_status = 'running'\n      AND EXISTS (SELECT 1 FROM released)\n    RETURNING entity_run_id\n),\nrun_done AS (\n    UPDATE ingestion.sync_runs\n    SET\n        run_status = 'succeeded',\n        completed_at = NOW(),\n        rows_extracted = 0,\n        rows_upserted = 0,\n        rows_rejected = 0,\n        error_message = NULL,\n        run_metadata = run_metadata || jsonb_build_object(\n            'result', 'no_changes',\n            'entity_key', $5::TEXT,\n            'checkpoint_advanced', false,\n            'checkpoint_released', true\n        )\n    WHERE run_id = $1::BIGINT\n      AND run_status = 'running'\n      AND sync_scope = $5::TEXT\n      AND EXISTS (SELECT 1 FROM entity_done)\n    RETURNING run_id\n)\nSELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n    $5::TEXT AS entity_key,\n    EXISTS(SELECT 1 FROM released) AS checkpoint_released,\n    EXISTS(SELECT 1 FROM entity_done) AS entity_completed,\n    EXISTS(SELECT 1 FROM run_done) AS run_completed,\n    false AS checkpoint_advanced,\n    ($3::TIMESTAMPTZ)::text AS retained_watermark,\n    $4::TEXT AS retained_primary_key,\n    'no_change_entity_sync_completed'::TEXT AS workflow_stage;",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $json.run_id,\n  $json.entity_run_id,\n  $json.start_watermark,\n  $json.start_primary_key,\n  $json.entity_key\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2464,
+        -64
+      ],
+      "id": "57f37bf1-13a0-461b-b4d3-945173b37181",
+      "name": "ESYNC-010 | Complete No-Change Entity Run",
+      "credentials": {
+        "postgres": {
+          "id": "49PPUUns3Rf0L3VK",
+          "name": "LUMORA | Ingestion RW"
+        }
+      },
+      "notes": "COMPONENT ID\nESYNC-010\n\nNODE NAME\nESYNC-010 | Complete No-Change Entity Run\n\nNODE TYPE\nPostgres \u2014 Execute Query\n\nSTAGE\nStage 8G.6 \u2014 Reusable Entity Sync Worker\n\nPURPOSE\nCompletes a valid entity sync when no source rows are newer than the committed cursor.\n\nCREDENTIAL\nLUMORA | Ingestion RW\n\nOWNERSHIP CONTRACT\nOnly the current run may release its running checkpoint.\nThe stored cursor must still equal the originally claimed cursor.\n\nNO-CHANGE CONTRACT\ncheckpoint_status returns to ready\nclaimed_run_id becomes NULL\nlast_watermark remains unchanged\nlast_primary_key remains unchanged\ncheckpoint_advanced = false\nentity and run become succeeded\nrows_extracted = 0\nrows_upserted = 0\n\nSECURITY BOUNDARY\nNo raw data write.\nNo cursor advancement.\nNo cross-run checkpoint release.\n\nNO AI\nNO ARBITRARY SQL\nNO SOURCE ACCESS\nNO REPORTING ACCESS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nShared control behavior verified through marketing.campaigns. marketing.leads pending Stage 8G.6 runtime verification."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH entity_failed AS (\n    UPDATE ingestion.sync_run_entities\n    SET entity_status = 'failed', error_message = 'CHECKPOINT_NOT_READY', completed_at = NOW()\n    WHERE entity_run_id = $2::BIGINT\n      AND run_id = $1::BIGINT\n      AND entity_key = $3::TEXT\n      AND entity_status = 'running'\n    RETURNING entity_run_id\n),\nrun_failed AS (\n    UPDATE ingestion.sync_runs\n    SET\n        run_status = 'failed',\n        error_message = 'CHECKPOINT_NOT_READY',\n        completed_at = NOW(),\n        run_metadata = run_metadata || jsonb_build_object(\n            'failure_stage', 'checkpoint_gate',\n            'failure_code', 'CHECKPOINT_NOT_READY',\n            'entity_key', $3::TEXT,\n            'checkpoint_touched', false\n        )\n    WHERE run_id = $1::BIGINT\n      AND run_status = 'running'\n      AND sync_scope = $3::TEXT\n    RETURNING run_id\n)\nSELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n    $3::TEXT AS entity_key,\n    EXISTS(SELECT 1 FROM entity_failed) AS entity_failed_now,\n    EXISTS(SELECT 1 FROM run_failed) AS run_failed_now,\n    CASE WHEN EXISTS(SELECT 1 FROM entity_failed) THEN 'failed' ELSE 'not_finalized' END AS final_entity_status,\n    CASE WHEN EXISTS(SELECT 1 FROM run_failed) THEN 'failed' ELSE 'not_finalized' END AS final_run_status,\n    (EXISTS(SELECT 1 FROM entity_failed) AND EXISTS(SELECT 1 FROM run_failed)) AS finalization_verified,\n    false AS checkpoint_modified,\n    'entity_checkpoint_gate_failure_finalized'::TEXT AS workflow_stage;",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $json.run_id,\n  $json.entity_run_id,\n  $json.requested_entity_key ?? $json.entity_key\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1120,
+        128
+      ],
+      "id": "33e7c369-7224-40bb-bc2d-515b52278463",
+      "name": "ESYNC-015 | Finalize Checkpoint Gate Failure",
+      "credentials": {
+        "postgres": {
+          "id": "49PPUUns3Rf0L3VK",
+          "name": "LUMORA | Ingestion RW"
+        }
+      },
+      "notes": "COMPONENT ID\nESYNC-015\n\nNODE NAME\nESYNC-015 | Finalize Checkpoint Gate Failure\n\nNODE TYPE\nPostgres \u2014 Execute Query\n\nSTAGE\nStage 8G.4 \u2014 Pre-Claim Failure Finalization\n\nPURPOSE\nDurably finalizes this execution when the checkpoint fails the ready/contract gate before ownership is acquired.\n\nFAILURE CODE\nCHECKPOINT_NOT_READY\n\nCREDENTIAL\nLUMORA | Ingestion RW\n\nSECURITY CONTRACT\nThis execution does not own the checkpoint.\nThis node MUST NOT update ingestion.sync_checkpoints.\nIt updates only its own run and entity control rows.\n\nOUTPUT\nfinal_entity_status = failed\nfinal_run_status = failed\nfinalization_verified\ncheckpoint_modified = false\n\nVERIFICATION METHOD\nUses data-modifying CTE RETURNING results rather than same-statement rereads.\n\nNO CHECKPOINT RELEASE\nNO CURSOR CHANGE\nNO CROSS-RUN MUTATION\nNO AI\nNO ARBITRARY SQL\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nShared control behavior verified with crm.sales_reps, crm.accounts, and crm.contacts. crm.activities pending Stage 8G.4 runtime verification."
+    },
+    {
+      "parameters": {
+        "errorMessage": "={{ 'CHECKPOINT_NOT_READY | entity=' + $json.entity_key + ' | run_id=' + $json.run_id }}"
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        1344,
+        128
+      ],
+      "id": "b1fe8bf4-c295-46a5-bad3-ff7b0ac89bb5",
+      "name": "ESYNC-ERR-01 | Stop Checkpoint Gate Failure",
+      "notes": "COMPONENT ID\nESYNC-ERR-01\n\nNODE NAME\nESYNC-ERR-01 | Stop Checkpoint Gate Failure\n\nNODE TYPE\nStop And Error\n\nSTAGE\nStage 8G.4 \u2014 Pre-Claim Failure Finalization\n\nPURPOSE\nRaises a deliberate workflow error only after the rejected run/entity control rows are finalized.\n\nUPSTREAM\nESYNC-015 only.\n\nSECURITY BOUNDARY\nNo database writes.\nNo checkpoint release.\nNo cursor mutation.\nThe configured Lumora Error Workflow may handle the execution-level incident.\n\nNO AI\nNO SQL\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nShared control behavior verified with crm.sales_reps, crm.accounts, and crm.contacts. crm.activities pending Stage 8G.4 runtime verification."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH entity_failed AS (\n    UPDATE ingestion.sync_run_entities\n    SET entity_status = 'failed', error_message = 'CHECKPOINT_CLAIM_FAILED', completed_at = NOW()\n    WHERE entity_run_id = $2::BIGINT\n      AND run_id = $1::BIGINT\n      AND entity_key = $3::TEXT\n      AND entity_status = 'running'\n    RETURNING entity_run_id\n),\nrun_failed AS (\n    UPDATE ingestion.sync_runs\n    SET\n        run_status = 'failed',\n        error_message = 'CHECKPOINT_CLAIM_FAILED',\n        completed_at = NOW(),\n        run_metadata = run_metadata || jsonb_build_object(\n            'failure_stage', 'checkpoint_claim',\n            'failure_code', 'CHECKPOINT_CLAIM_FAILED',\n            'entity_key', $3::TEXT,\n            'checkpoint_touched', false\n        )\n    WHERE run_id = $1::BIGINT\n      AND run_status = 'running'\n      AND sync_scope = $3::TEXT\n    RETURNING run_id\n)\nSELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n    $3::TEXT AS entity_key,\n    EXISTS(SELECT 1 FROM entity_failed) AS entity_failed_now,\n    EXISTS(SELECT 1 FROM run_failed) AS run_failed_now,\n    CASE WHEN EXISTS(SELECT 1 FROM entity_failed) THEN 'failed' ELSE 'not_finalized' END AS final_entity_status,\n    CASE WHEN EXISTS(SELECT 1 FROM run_failed) THEN 'failed' ELSE 'not_finalized' END AS final_run_status,\n    (EXISTS(SELECT 1 FROM entity_failed) AND EXISTS(SELECT 1 FROM run_failed)) AS finalization_verified,\n    false AS checkpoint_modified,\n    'entity_checkpoint_claim_failure_finalized'::TEXT AS workflow_stage;",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $json.run_id,\n  $json.entity_run_id,\n  $json.entity_key\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1568,
+        32
+      ],
+      "id": "02f34a67-f124-4cff-a756-a283f5c17d2e",
+      "name": "ESYNC-016 | Finalize Claim Failure",
+      "credentials": {
+        "postgres": {
+          "id": "49PPUUns3Rf0L3VK",
+          "name": "LUMORA | Ingestion RW"
+        }
+      },
+      "notes": "COMPONENT ID\nESYNC-016\n\nNODE NAME\nESYNC-016 | Finalize Claim Failure\n\nNODE TYPE\nPostgres \u2014 Execute Query\n\nSTAGE\nStage 8G.4 \u2014 Pre-Claim Failure Finalization\n\nPURPOSE\nDurably finalizes this execution when the atomic checkpoint claim does not succeed.\n\nFAILURE CODE\nCHECKPOINT_CLAIM_FAILED\n\nCREDENTIAL\nLUMORA | Ingestion RW\n\nSECURITY CONTRACT\nA failed claim means this run does not own the checkpoint.\nThe checkpoint must not be released, reset, advanced, or otherwise modified because another run may own it.\n\nOUTPUT\nfinal_entity_status = failed\nfinal_run_status = failed\nfinalization_verified\ncheckpoint_modified = false\n\nVERIFICATION METHOD\nUses data-modifying CTE RETURNING results rather than same-statement rereads.\n\nNO CHECKPOINT RELEASE\nNO CURSOR CHANGE\nNO CROSS-RUN MUTATION\nNO AI\nNO ARBITRARY SQL\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nShared control behavior verified with crm.sales_reps, crm.accounts, and crm.contacts. crm.activities pending Stage 8G.4 runtime verification."
+    },
+    {
+      "parameters": {
+        "errorMessage": "={{ 'CHECKPOINT_CLAIM_FAILED | entity=' + $json.entity_key + ' | run_id=' + $json.run_id }}"
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        1792,
+        32
+      ],
+      "id": "fea08ae9-6cc8-4fe2-94e1-f903049920db",
+      "name": "ESYNC-ERR-02 | Stop Checkpoint Claim Failure",
+      "notes": "COMPONENT ID\nESYNC-ERR-02\n\nNODE NAME\nESYNC-ERR-02 | Stop Checkpoint Claim Failure\n\nNODE TYPE\nStop And Error\n\nSTAGE\nStage 8G.4 \u2014 Pre-Claim Failure Finalization\n\nPURPOSE\nRaises a deliberate workflow error after a failed checkpoint claim is durably finalized.\n\nUPSTREAM\nESYNC-016 only.\n\nSECURITY BOUNDARY\nNo database writes.\nNo checkpoint release.\nNo cursor mutation.\nThe configured Lumora Error Workflow may handle the execution-level incident.\n\nNO AI\nNO SQL\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nShared control behavior verified with crm.sales_reps, crm.accounts, and crm.contacts. crm.activities pending Stage 8G.4 runtime verification."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH payload AS (\n    SELECT *\n    FROM jsonb_populate_recordset(\n        NULL::raw_crm.sales_reps,\n        $6::JSONB\n    )\n),\nupserted AS (\n    INSERT INTO raw_crm.sales_reps (\n        rep_id,\n        full_name,\n        email,\n        team,\n        manager_id,\n        region,\n        employment_status,\n        hire_date,\n        monthly_quota_default,\n        source_created_at,\n        source_updated_at,\n        ingested_at\n    )\n    SELECT\n        rep_id,\n        full_name,\n        email,\n        team,\n        manager_id,\n        region,\n        employment_status,\n        hire_date,\n        monthly_quota_default,\n        source_created_at,\n        source_updated_at,\n        NOW()\n    FROM payload\n    WHERE $5::TEXT = 'crm.sales_reps'\n    ON CONFLICT (rep_id)\n    DO UPDATE SET\n        full_name = EXCLUDED.full_name,\n        email = EXCLUDED.email,\n        team = EXCLUDED.team,\n        manager_id = EXCLUDED.manager_id,\n        region = EXCLUDED.region,\n        employment_status = EXCLUDED.employment_status,\n        hire_date = EXCLUDED.hire_date,\n        monthly_quota_default = EXCLUDED.monthly_quota_default,\n        source_created_at = EXCLUDED.source_created_at,\n        source_updated_at = EXCLUDED.source_updated_at,\n        ingested_at = NOW()\n    RETURNING rep_id, source_updated_at\n),\nstats AS (\n    SELECT COUNT(*)::INTEGER AS rows_upserted\n    FROM upserted\n),\nlast_upserted AS (\n    SELECT rep_id, source_updated_at\n    FROM upserted\n    ORDER BY source_updated_at DESC, rep_id DESC\n    LIMIT 1\n)\nSELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n    $5::TEXT AS entity_key,\n    $3::TEXT AS start_watermark,\n    $4::TEXT AS start_primary_key,\n    $7::INTEGER AS rows_extracted,\n    s.rows_upserted,\n    lu.source_updated_at::text AS end_watermark,\n    lu.rep_id AS end_primary_key,\n    (\n        s.rows_upserted = $7::INTEGER\n        AND s.rows_upserted > 0\n        AND lu.source_updated_at = $8::TIMESTAMPTZ\n        AND lu.rep_id = $9::TEXT\n    ) AS upsert_verified,\n    'entity_raw_upsert_complete'::TEXT AS workflow_stage\nFROM stats s\nLEFT JOIN last_upserted lu ON TRUE;",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $json.run_id,\n  $json.entity_run_id,\n  $json.start_watermark,\n  $json.start_primary_key,\n  $json.entity_key,\n  JSON.stringify($json.changed_rows),\n  $json.rows_extracted,\n  $json.candidate_end_watermark,\n  $json.candidate_end_primary_key\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2912,
+        -288
+      ],
+      "id": "bdd4be7d-7391-4991-9001-8fde52468e13",
+      "name": "ESYNC-011 | Upsert Sales Reps Batch",
+      "credentials": {
+        "postgres": {
+          "id": "49PPUUns3Rf0L3VK",
+          "name": "LUMORA | Ingestion RW"
+        }
+      },
+      "notes": "COMPONENT ID\nESYNC-011\n\nNODE NAME\nESYNC-011 | Upsert Sales Reps Batch\n\nNODE TYPE\nPostgres \u2014 Execute Query\n\nSTAGE\nStage 8G.1 \u2014 crm.sales_reps Positive Incremental Sync\n\nPURPOSE\nIdempotently persists the extracted crm.sales_reps batch into raw_crm.sales_reps.\n\nRESPONSIBILITY\nConverts the governed changed_rows JSON batch into raw_crm.sales_reps rows.\nUses rep_id as the conflict key.\nSets ingested_at at warehouse ingestion time.\nVerifies row count and ending composite cursor before checkpoint advancement.\n\nCREDENTIAL\nLUMORA | Ingestion RW\n\nAUTHORIZED TARGET\nraw_crm.sales_reps only.\n\nIDEMPOTENCY CONTRACT\nON CONFLICT (rep_id) DO UPDATE.\nReplay of the same source batch must not create duplicates.\n\nVERIFICATION CONTRACT\nupsert_verified = true only when rows_upserted equals rows_extracted, at least one row was written, and the last upserted (source_updated_at, rep_id) exactly matches the source candidate cursor.\n\nSECURITY BOUNDARY\nFixed allowlisted target table.\nNo runtime table selection.\nNo source write.\nNo checkpoint update.\nNo reporting/governance access.\n\nNO AI\nNO ARBITRARY SQL\nNO SECRET IN NODE NOTES\n\nVERIFICATION STATUS\nVerified in Stage 8G.1 with exact row-count/cursor validation and idempotent replay."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "120182ec-6f72-40c3-a4eb-733c521f4bf5",
+              "leftValue": "={{ $json.upsert_verified }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3136,
+        -288
+      ],
+      "id": "1c066474-420a-4148-b1bb-090eb2e98ad5",
+      "name": "ESYNC-012 | Upsert Verified?",
+      "notes": "COMPONENT ID\nESYNC-012\n\nNODE NAME\nESYNC-012 | Upsert Verified?\n\nNODE TYPE\nIF\n\nSTAGE\nStage 8G.6\n\nPURPOSE\nBlocks checkpoint advancement unless the raw entity upsert is proven complete.\n\nTRUE\nupsert_verified = true \u2192 ownership-safe checkpoint commit.\n\nFALSE\nupsert cannot be proven \u2192 owned-failure finalization before Stop And Error.\n\nSECURITY BOUNDARY\nFALSE can never advance the checkpoint.\n\nNO AI\nNO SQL\nNO DATABASE ACCESS\nNO SECRET IN NODE NOTES\n\nVERIFICATION STATUS\nShared control behavior verified with crm.sales_reps, crm.accounts, and crm.contacts. crm.activities pending Stage 8G.6 runtime verification."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH checkpoint_done AS (\n    UPDATE ingestion.sync_checkpoints sc\n    SET\n        last_watermark = $6::TIMESTAMPTZ,\n        last_primary_key = $7::TEXT,\n        checkpoint_status = 'ready',\n        claimed_run_id = NULL,\n        last_successful_run_id = $1::BIGINT,\n        last_synced_at = NOW(),\n        updated_at = NOW()\n    WHERE sc.entity_key = $5::TEXT\n      AND sc.checkpoint_status = 'running'\n      AND sc.claimed_run_id = $1::BIGINT\n      AND sc.last_watermark = $3::TIMESTAMPTZ\n      AND sc.last_primary_key = $4::TEXT\n      AND ($6::TIMESTAMPTZ, $7::TEXT) > (sc.last_watermark, sc.last_primary_key)\n      AND EXISTS (\n          SELECT 1 FROM ingestion.sync_runs sr\n          WHERE sr.run_id = $1::BIGINT\n            AND sr.run_status = 'running'\n            AND sr.sync_scope = $5::TEXT\n      )\n      AND EXISTS (\n          SELECT 1 FROM ingestion.sync_run_entities sre\n          WHERE sre.entity_run_id = $2::BIGINT\n            AND sre.run_id = $1::BIGINT\n            AND sre.entity_key = $5::TEXT\n            AND sre.entity_status = 'running'\n      )\n    RETURNING sc.entity_key, sc.last_watermark::text AS last_watermark, sc.last_primary_key, sc.last_successful_run_id\n),\nentity_done AS (\n    UPDATE ingestion.sync_run_entities\n    SET\n        start_watermark = $3::TIMESTAMPTZ,\n        start_primary_key = $4::TEXT,\n        end_watermark = $6::TIMESTAMPTZ,\n        end_primary_key = $7::TEXT,\n        rows_extracted = $8::INTEGER,\n        rows_upserted = $9::INTEGER,\n        entity_status = 'succeeded',\n        error_message = NULL,\n        completed_at = NOW()\n    WHERE entity_run_id = $2::BIGINT\n      AND run_id = $1::BIGINT\n      AND entity_key = $5::TEXT\n      AND entity_status = 'running'\n      AND EXISTS (SELECT 1 FROM checkpoint_done)\n    RETURNING entity_run_id\n),\nrun_done AS (\n    UPDATE ingestion.sync_runs\n    SET\n        run_status = 'succeeded',\n        completed_at = NOW(),\n        rows_extracted = $8::INTEGER,\n        rows_upserted = $9::INTEGER,\n        rows_rejected = 0,\n        error_message = NULL,\n        run_metadata = run_metadata || jsonb_build_object(\n            'result', 'changes_applied',\n            'entity_key', $5::TEXT,\n            'checkpoint_advanced', true,\n            'checkpoint_released', true\n        )\n    WHERE run_id = $1::BIGINT\n      AND run_status = 'running'\n      AND sync_scope = $5::TEXT\n      AND EXISTS (SELECT 1 FROM entity_done)\n    RETURNING run_id\n)\nSELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n    $5::TEXT AS entity_key,\n    EXISTS(SELECT 1 FROM checkpoint_done) AS checkpoint_advanced,\n    EXISTS(SELECT 1 FROM entity_done) AS entity_completed,\n    EXISTS(SELECT 1 FROM run_done) AS run_completed,\n    ($3::TIMESTAMPTZ)::text AS old_watermark,\n    $4::TEXT AS old_primary_key,\n    ($6::TIMESTAMPTZ)::text AS new_watermark,\n    $7::TEXT AS new_primary_key,\n    $8::INTEGER AS rows_extracted,\n    $9::INTEGER AS rows_upserted,\n    CASE\n      WHEN EXISTS(SELECT 1 FROM checkpoint_done)\n       AND EXISTS(SELECT 1 FROM entity_done)\n       AND EXISTS(SELECT 1 FROM run_done)\n      THEN 'entity_incremental_sync_committed'\n      ELSE 'entity_incremental_sync_commit_unverified'\n    END::TEXT AS workflow_stage;",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $json.run_id,\n  $json.entity_run_id,\n  $json.start_watermark,\n  $json.start_primary_key,\n  $json.entity_key,\n  $json.end_watermark,\n  $json.end_primary_key,\n  $json.rows_extracted,\n  $json.rows_upserted\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        3360,
+        -384
+      ],
+      "id": "ce031b82-4344-4a1f-8f9d-f5728cf46863",
+      "name": "ESYNC-013 | Advance Entity Checkpoint",
+      "credentials": {
+        "postgres": {
+          "id": "49PPUUns3Rf0L3VK",
+          "name": "LUMORA | Ingestion RW"
+        }
+      },
+      "notes": "COMPONENT ID\nESYNC-013\n\nNODE NAME\nESYNC-013 | Advance Entity Checkpoint\n\nNODE TYPE\nPostgres \u2014 Execute Query\n\nSTAGE\nStage 8G.6\n\nPURPOSE\nCommits the verified allowlisted entity batch by advancing its authoritative composite cursor.\n\nCREDENTIAL\nLUMORA | Ingestion RW\n\nOWNERSHIP CONTRACT\nOnly checkpoint_status=running and claimed_run_id=current run may advance.\nThe stored cursor must still equal the cursor originally claimed.\nThe candidate cursor must be strictly forward.\nThe run and entity control rows must still be active and belong to this entity.\n\nSUCCESS\nAdvances the governed (source_updated_at, primary_key) cursor, releases ownership, sets last_successful_run_id, and marks entity/run succeeded.\n\nMETADATA CONTRACT\nentity_incremental_sync_committed is returned only when checkpoint, entity, and run updates all succeed. Otherwise entity_incremental_sync_commit_unverified is returned for deterministic reconciliation.\n\nNO cross-run release.\nNO backward cursor movement.\nNO AI.\nNO arbitrary SQL.\nNO secrets in Notes.\n\nVERIFICATION STATUS\nShared control behavior verified with crm.sales_reps, crm.accounts, and crm.contacts. crm.activities pending Stage 8G.6 runtime verification."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "04b124ce-b6b7-4abb-8211-6991a9459d82",
+              "leftValue": "={{\n$json.checkpoint_advanced === true\n&& $json.entity_completed === true\n&& $json.run_completed === true\n}}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3584,
+        -384
+      ],
+      "id": "402a6d3d-b347-489b-beff-0e5b1182693a",
+      "name": "ESYNC-014 | Commit Verified?",
+      "notes": "COMPONENT ID\nESYNC-014\n\nNODE NAME\nESYNC-014 | Commit Verified?\n\nNODE TYPE\nIF\n\nSTAGE\nStage 8G.4\n\nPURPOSE\nVerifies that checkpoint advancement, entity completion, and run completion all succeeded.\n\nTRUE\nThe entity sync is durably committed and may end successfully.\n\nFALSE\nRoute to authoritative commit reconciliation.\n\nNO AI\nNO SQL\nNO DATABASE ACCESS\nNO SECRET IN NODE NOTES\n\nVERIFICATION STATUS\nShared control behavior verified with crm.sales_reps, crm.accounts, and crm.contacts. crm.activities pending Stage 8G.4 runtime verification."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH released AS (\n    UPDATE ingestion.sync_checkpoints sc\n    SET checkpoint_status='ready', claimed_run_id=NULL, updated_at=NOW()\n    WHERE sc.entity_key=$5::TEXT\n      AND sc.checkpoint_status='running'\n      AND sc.claimed_run_id=$1::BIGINT\n      AND sc.last_watermark=$3::TIMESTAMPTZ\n      AND sc.last_primary_key=$4::TEXT\n    RETURNING sc.entity_key, sc.last_watermark::text AS retained_watermark, sc.last_primary_key, sc.last_successful_run_id\n),\nentity_failed AS (\n    UPDATE ingestion.sync_run_entities\n    SET entity_status='failed', error_message='UPSERT_VERIFICATION_FAILED', rows_extracted=$6::INTEGER, rows_upserted=$7::INTEGER, completed_at=NOW()\n    WHERE entity_run_id=$2::BIGINT\n      AND run_id=$1::BIGINT\n      AND entity_key=$5::TEXT\n      AND entity_status='running'\n      AND EXISTS(SELECT 1 FROM released)\n    RETURNING entity_run_id\n),\nrun_failed AS (\n    UPDATE ingestion.sync_runs\n    SET run_status='failed', error_message='UPSERT_VERIFICATION_FAILED', rows_extracted=$6::INTEGER, rows_upserted=$7::INTEGER, completed_at=NOW(),\n        run_metadata=run_metadata || jsonb_build_object(\n          'failure_stage','upsert_verification',\n          'failure_code','UPSERT_VERIFICATION_FAILED',\n          'entity_key',$5::TEXT,\n          'checkpoint_released',true,\n          'checkpoint_advanced',false\n        )\n    WHERE run_id=$1::BIGINT\n      AND run_status='running'\n      AND sync_scope=$5::TEXT\n      AND EXISTS(SELECT 1 FROM entity_failed)\n    RETURNING run_id\n)\nSELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n    $5::TEXT AS entity_key,\n    EXISTS(SELECT 1 FROM released) AS checkpoint_released,\n    EXISTS(SELECT 1 FROM entity_failed) AS entity_failed_now,\n    EXISTS(SELECT 1 FROM run_failed) AS run_failed_now,\n    CASE WHEN EXISTS(SELECT 1 FROM entity_failed) THEN 'failed' ELSE 'not_finalized' END AS final_entity_status,\n    CASE WHEN EXISTS(SELECT 1 FROM run_failed) THEN 'failed' ELSE 'not_finalized' END AS final_run_status,\n    (EXISTS(SELECT 1 FROM released) AND EXISTS(SELECT 1 FROM entity_failed) AND EXISTS(SELECT 1 FROM run_failed)) AS finalization_verified,\n    false AS checkpoint_advanced,\n    (SELECT retained_watermark FROM released) AS retained_watermark,\n    (SELECT last_primary_key FROM released) AS retained_primary_key,\n    (SELECT last_successful_run_id FROM released) AS retained_last_successful_run_id,\n    'entity_owned_sync_failure_finalized'::TEXT AS workflow_stage;",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $json.run_id,\n  $json.entity_run_id,\n  $json.start_watermark,\n  $json.start_primary_key,\n  $json.entity_key,\n  $json.rows_extracted,\n  $json.rows_upserted\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        3360,
+        -192
+      ],
+      "id": "a4d5648d-4b71-4f94-9002-51aa46bfde5d",
+      "name": "ESYNC-017 | Finalize Owned Entity Sync Failure",
+      "credentials": {
+        "postgres": {
+          "id": "49PPUUns3Rf0L3VK",
+          "name": "LUMORA | Ingestion RW"
+        }
+      },
+      "notes": "COMPONENT ID\nESYNC-017\n\nNODE NAME\nESYNC-017 | Finalize Owned Entity Sync Failure\n\nNODE TYPE\nPostgres \u2014 Execute Query\n\nSTAGE\nStage 8G.4 \u2014 Post-Claim Recovery\n\nPURPOSE\nSafely finalizes an upsert-verification failure after this run has already acquired checkpoint ownership.\n\nCREDENTIAL\nLUMORA | Ingestion RW\n\nOWNERSHIP/CURSOR CONTRACT\nRelease is allowed only for the current entity, checkpoint_status=running, claimed_run_id=current run, and the exact originally claimed cursor.\n\nACTION\nRelease only this run's claim without advancing the cursor. Preserve last_watermark, last_primary_key, and last_successful_run_id. Mark only the current entity/run failed.\n\nNO cross-run checkpoint release.\nNO cursor modification.\nNO checkpoint advancement.\nNO AI.\nNO arbitrary SQL.\nNO secrets in Notes.\n\nVERIFICATION STATUS\nShared control behavior verified with crm.sales_reps, crm.accounts, and crm.contacts. crm.activities pending Stage 8G.4 runtime verification."
+    },
+    {
+      "parameters": {
+        "errorMessage": "={{ 'RAW_UPSERT_VERIFICATION_FAILED | entity=' + $json.entity_key + ' | run_id=' + $json.run_id }}"
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        3584,
+        -192
+      ],
+      "id": "9f587ba9-500f-48f3-8d05-50cd5e90f258",
+      "name": "ESYNC-ERR-03 | Stop Unverified Upsert",
+      "notes": "COMPONENT ID\nESYNC-ERR-03\n\nNODE NAME\nESYNC-ERR-03 | Stop Unverified Upsert\n\nNODE TYPE\nStop And Error\n\nPURPOSE\nTerminates execution only after the owned post-claim failure has been finalized.\n\nUPSTREAM\nESYNC-017 only.\n\nNO database writes.\nNO checkpoint mutation.\nNO AI.\nNO secrets in Notes.\n\nVERIFICATION STATUS\nShared control behavior verified with crm.sales_reps, crm.accounts, and crm.contacts. crm.activities pending Stage 8G.4 runtime verification."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH state AS MATERIALIZED (\n    SELECT\n        sc.entity_key, sc.checkpoint_status, sc.claimed_run_id,\n        sc.last_watermark::text AS checkpoint_watermark,\n        sc.last_primary_key AS checkpoint_primary_key,\n        sc.last_successful_run_id,\n        sr.run_status AS initial_run_status,\n        sre.entity_status AS initial_entity_status,\n        CASE\n          WHEN sc.checkpoint_status='running'\n           AND sc.claimed_run_id=$1::BIGINT\n           AND sc.last_watermark=$3::TIMESTAMPTZ\n           AND sc.last_primary_key=$4::TEXT\n          THEN 'owned_old_cursor'\n          WHEN sc.checkpoint_status='ready'\n           AND sc.claimed_run_id IS NULL\n           AND sc.last_watermark=$6::TIMESTAMPTZ\n           AND sc.last_primary_key=$7::TEXT\n           AND sc.last_successful_run_id=$1::BIGINT\n          THEN 'committed_new_cursor'\n          ELSE 'unexpected_state'\n        END AS reconciliation_case\n    FROM ingestion.sync_checkpoints sc\n    JOIN ingestion.sync_runs sr ON sr.run_id=$1::BIGINT\n    JOIN ingestion.sync_run_entities sre\n      ON sre.entity_run_id=$2::BIGINT AND sre.run_id=$1::BIGINT AND sre.entity_key=$5::TEXT\n    WHERE sc.entity_key=$5::TEXT\n    FOR UPDATE OF sc, sr, sre\n),\nrelease_old_claim AS (\n    UPDATE ingestion.sync_checkpoints sc\n    SET checkpoint_status='ready', claimed_run_id=NULL, updated_at=NOW()\n    WHERE sc.entity_key=$5::TEXT\n      AND sc.checkpoint_status='running'\n      AND sc.claimed_run_id=$1::BIGINT\n      AND sc.last_watermark=$3::TIMESTAMPTZ\n      AND sc.last_primary_key=$4::TEXT\n      AND EXISTS(SELECT 1 FROM state WHERE reconciliation_case='owned_old_cursor')\n    RETURNING sc.entity_key\n),\nentity_fail_old AS (\n    UPDATE ingestion.sync_run_entities\n    SET entity_status='failed', error_message='CHECKPOINT_COMMIT_NOT_APPLIED', rows_extracted=$8::INTEGER, rows_upserted=$9::INTEGER, completed_at=COALESCE(completed_at,NOW())\n    WHERE entity_run_id=$2::BIGINT AND run_id=$1::BIGINT AND entity_key=$5::TEXT AND entity_status='running'\n      AND EXISTS(SELECT 1 FROM release_old_claim)\n    RETURNING entity_run_id\n),\nrun_fail_old AS (\n    UPDATE ingestion.sync_runs\n    SET run_status='failed', error_message='CHECKPOINT_COMMIT_NOT_APPLIED', rows_extracted=$8::INTEGER, rows_upserted=$9::INTEGER, completed_at=COALESCE(completed_at,NOW()),\n        run_metadata=run_metadata || jsonb_build_object('failure_stage','checkpoint_commit_verification','failure_code','CHECKPOINT_COMMIT_NOT_APPLIED','entity_key',$5::TEXT,'reconciliation_case','owned_old_cursor','checkpoint_released',true,'checkpoint_advanced',false,'cursor_rewound',false)\n    WHERE run_id=$1::BIGINT AND run_status='running' AND sync_scope=$5::TEXT\n      AND EXISTS(SELECT 1 FROM entity_fail_old)\n    RETURNING run_id\n),\nentity_reconcile_committed AS (\n    UPDATE ingestion.sync_run_entities\n    SET start_watermark=$3::TIMESTAMPTZ, start_primary_key=$4::TEXT, end_watermark=$6::TIMESTAMPTZ, end_primary_key=$7::TEXT,\n        rows_extracted=$8::INTEGER, rows_upserted=$9::INTEGER, entity_status='succeeded', error_message=NULL, completed_at=COALESCE(completed_at,NOW())\n    WHERE entity_run_id=$2::BIGINT AND run_id=$1::BIGINT AND entity_key=$5::TEXT\n      AND entity_status IN ('running','succeeded')\n      AND EXISTS(SELECT 1 FROM state WHERE reconciliation_case='committed_new_cursor')\n    RETURNING entity_run_id\n),\nrun_reconcile_committed AS (\n    UPDATE ingestion.sync_runs\n    SET run_status='succeeded', rows_extracted=$8::INTEGER, rows_upserted=$9::INTEGER, rows_rejected=0, error_message=NULL, completed_at=COALESCE(completed_at,NOW()),\n        run_metadata=run_metadata || jsonb_build_object('result','changes_applied','entity_key',$5::TEXT,'checkpoint_advanced',true,'checkpoint_released',true,'commit_reconciled',true,'commit_verification_anomaly',true,'reconciliation_case','committed_new_cursor','cursor_rewound',false)\n    WHERE run_id=$1::BIGINT AND sync_scope=$5::TEXT AND run_status IN ('running','succeeded')\n      AND EXISTS(SELECT 1 FROM entity_reconcile_committed)\n    RETURNING run_id\n),\nentity_fail_unexpected AS (\n    UPDATE ingestion.sync_run_entities\n    SET entity_status='failed', error_message='CHECKPOINT_COMMIT_STATE_UNEXPECTED', completed_at=COALESCE(completed_at,NOW())\n    WHERE entity_run_id=$2::BIGINT AND run_id=$1::BIGINT AND entity_key=$5::TEXT AND entity_status='running'\n      AND EXISTS(SELECT 1 FROM state WHERE reconciliation_case='unexpected_state')\n    RETURNING entity_run_id\n),\nrun_fail_unexpected AS (\n    UPDATE ingestion.sync_runs\n    SET run_status='failed', error_message='CHECKPOINT_COMMIT_STATE_UNEXPECTED', completed_at=COALESCE(completed_at,NOW()),\n        run_metadata=run_metadata || jsonb_build_object('failure_stage','checkpoint_commit_reconciliation','failure_code','CHECKPOINT_COMMIT_STATE_UNEXPECTED','entity_key',$5::TEXT,'reconciliation_case','unexpected_state','checkpoint_modified',false,'cursor_rewound',false)\n    WHERE run_id=$1::BIGINT AND sync_scope=$5::TEXT AND run_status='running'\n      AND EXISTS(SELECT 1 FROM state WHERE reconciliation_case='unexpected_state')\n    RETURNING run_id\n)\nSELECT\n    $1::BIGINT AS run_id, $2::BIGINT AS entity_run_id, $5::TEXT AS entity_key, s.reconciliation_case,\n    s.checkpoint_status AS checkpoint_status_before, s.claimed_run_id AS claimed_run_id_before,\n    s.checkpoint_watermark AS checkpoint_watermark_before, s.checkpoint_primary_key AS checkpoint_primary_key_before,\n    s.last_successful_run_id AS last_successful_run_id_before, s.initial_entity_status, s.initial_run_status,\n    ($3::TIMESTAMPTZ)::text AS expected_old_watermark, $4::TEXT AS expected_old_primary_key,\n    ($6::TIMESTAMPTZ)::text AS expected_new_watermark, $7::TEXT AS expected_new_primary_key,\n    EXISTS(SELECT 1 FROM release_old_claim) AS checkpoint_released,\n    EXISTS(SELECT 1 FROM entity_fail_old) AS entity_failed_old_cursor,\n    EXISTS(SELECT 1 FROM run_fail_old) AS run_failed_old_cursor,\n    EXISTS(SELECT 1 FROM entity_reconcile_committed) AS entity_reconciled_committed,\n    EXISTS(SELECT 1 FROM run_reconcile_committed) AS run_reconciled_committed,\n    EXISTS(SELECT 1 FROM entity_fail_unexpected) AS entity_failed_unexpected,\n    EXISTS(SELECT 1 FROM run_fail_unexpected) AS run_failed_unexpected,\n    CASE WHEN s.reconciliation_case='owned_old_cursor' THEN CASE WHEN EXISTS(SELECT 1 FROM entity_fail_old) THEN 'failed' ELSE s.initial_entity_status END\n         WHEN s.reconciliation_case='committed_new_cursor' THEN CASE WHEN EXISTS(SELECT 1 FROM entity_reconcile_committed) THEN 'succeeded' ELSE s.initial_entity_status END\n         ELSE CASE WHEN EXISTS(SELECT 1 FROM entity_fail_unexpected) THEN 'failed' ELSE s.initial_entity_status END END AS final_entity_status,\n    CASE WHEN s.reconciliation_case='owned_old_cursor' THEN CASE WHEN EXISTS(SELECT 1 FROM run_fail_old) THEN 'failed' ELSE s.initial_run_status END\n         WHEN s.reconciliation_case='committed_new_cursor' THEN CASE WHEN EXISTS(SELECT 1 FROM run_reconcile_committed) THEN 'succeeded' ELSE s.initial_run_status END\n         ELSE CASE WHEN EXISTS(SELECT 1 FROM run_fail_unexpected) THEN 'failed' ELSE s.initial_run_status END END AS final_run_status,\n    CASE WHEN s.reconciliation_case='owned_old_cursor' THEN EXISTS(SELECT 1 FROM release_old_claim) AND EXISTS(SELECT 1 FROM entity_fail_old) AND EXISTS(SELECT 1 FROM run_fail_old)\n         WHEN s.reconciliation_case='committed_new_cursor' THEN EXISTS(SELECT 1 FROM entity_reconcile_committed) AND EXISTS(SELECT 1 FROM run_reconcile_committed)\n         ELSE false END AS reconciliation_verified,\n    false AS checkpoint_rewound,\n    EXISTS(SELECT 1 FROM release_old_claim) AS checkpoint_modified,\n    (s.reconciliation_case='unexpected_state') AS failed_closed,\n    'entity_commit_reconciliation_complete'::TEXT AS workflow_stage\nFROM state s;",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $json.run_id,\n  $json.entity_run_id,\n  $json.old_watermark,\n  $json.old_primary_key,\n  $json.entity_key,\n  $json.new_watermark,\n  $json.new_primary_key,\n  $json.rows_extracted,\n  $json.rows_upserted\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        3808,
+        -288
+      ],
+      "id": "18924b97-5a15-433e-b6fd-4470070489f0",
+      "name": "ESYNC-018 | Reconcile Unverified Entity Commit",
+      "credentials": {
+        "postgres": {
+          "id": "49PPUUns3Rf0L3VK",
+          "name": "LUMORA | Ingestion RW"
+        }
+      },
+      "notes": "COMPONENT ID\nESYNC-018\n\nNODE NAME\nESYNC-018 | Reconcile Unverified Entity Commit\n\nNODE TYPE\nPostgres \u2014 Execute Query\n\nSTAGE\nStage 8G.4 \u2014 Commit Reconciliation\n\nPURPOSE\nInspects authoritative database state when ESYNC-014 cannot prove the commit result.\n\nCASES\nowned_old_cursor: commit not applied; release only this run's owned old cursor and fail its control rows.\ncommitted_new_cursor: commit already applied; NEVER rewind or release; reconcile run/entity to succeeded and record a verification anomaly.\nunexpected_state: do not modify checkpoint; fail still-running current control rows and fail closed.\n\nCONCURRENCY BOUNDARY\nLocks checkpoint, run, and entity rows during reconciliation.\n\nSECURITY CONTRACT\nNo cross-run release.\nNo cursor rollback.\nNo automatic repair of unexpected ownership/cursor state.\nNo AI authorization.\nNo arbitrary SQL.\nNo secrets in Notes.\n\nVERIFICATION METHOD\nUses data-modifying CTE RETURNING results to avoid same-statement snapshot ambiguity.\n\nVERIFICATION STATUS\nShared control behavior verified with crm.sales_reps, crm.accounts, and crm.contacts. crm.activities pending Stage 8G.4 runtime verification."
+    },
+    {
+      "parameters": {
+        "errorMessage": "={{ 'CHECKPOINT_COMMIT_VERIFICATION_FAILED | entity=' + $json.entity_key + ' | run_id=' + $json.run_id + ' | reconciliation_case=' + ($json.reconciliation_case ?? 'unknown') }}"
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        4032,
+        -288
+      ],
+      "id": "77e5590f-87cf-4aba-8913-367e6f997b23",
+      "name": "ESYNC-ERR-04 | Stop Unverified Entity Commit",
+      "notes": "COMPONENT ID\nESYNC-ERR-04\n\nNODE NAME\nESYNC-ERR-04 | Stop Unverified Entity Commit\n\nNODE TYPE\nStop And Error\n\nPURPOSE\nSurfaces a commit-verification anomaly only after ESYNC-018 has reconciled authoritative database state.\n\nSECURITY CONTRACT\nThis node performs no recovery and no database write.\nIt cannot release, rewind, or advance any checkpoint.\n\nNO AI.\nNO SQL.\nNO secrets in Notes.\n\nVERIFICATION STATUS\nShared control behavior verified with crm.sales_reps, crm.accounts, and crm.contacts. crm.activities pending Stage 8G.4 runtime verification."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "3200239d-4338-448f-abf3-7fb156936d4b",
+              "leftValue": "={{ $json.entity_key === 'crm.sales_reps' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1568,
+        -96
+      ],
+      "id": "28c60b92-8066-4a82-9d6c-b2f8306b7f7f",
+      "name": "ESYNC-019 | Route Source Entity",
+      "notes": "COMPONENT ID\nESYNC-019\n\nNODE NAME\nESYNC-019 | Route Source Entity\n\nNODE TYPE\nIF\n\nSTAGE\nStage 8G.4 \u2014 Deterministic Entity Routing\n\nPURPOSE\nFirst fixed source router for an already allowlisted entity.\n\nTRUE PATH\ncrm.sales_reps \u2192 ESYNC-008 | Extract Sales Reps Batch\n\nFALSE PATH\ncrm.accounts or crm.contacts \u2192 ESYNC-024 | Route Remaining Source Entity\n\nSECURITY BOUNDARY\nESYNC-004 validates the entity contract before this router is reached. This node does not construct SQL identifiers or accept manager-controlled routing.\n\nNO AI\nNO SQL\nNO DATABASE ACCESS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\ncrm.sales_reps, crm.accounts, and crm.contacts routing verified. crm.activities pending Stage 8G.4 runtime verification."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH changed AS (\n    SELECT\n        account_id,\n        account_name,\n        industry,\n        segment,\n        employee_band,\n        annual_revenue,\n        country,\n        city,\n        owner_rep_id,\n        account_status,\n        source_created_at,\n        source_updated_at\n    FROM crm.accounts\n    WHERE $5::TEXT = 'crm.accounts'\n      AND (\n          source_updated_at > $3::TIMESTAMPTZ\n          OR (\n              source_updated_at = $3::TIMESTAMPTZ\n              AND account_id > $4::TEXT\n          )\n      )\n    ORDER BY source_updated_at, account_id\n    LIMIT 100\n),\naggregated AS (\n    SELECT\n        COUNT(*)::INTEGER AS rows_extracted,\n        COALESCE(\n            jsonb_agg(\n                to_jsonb(c)\n                ORDER BY c.source_updated_at, c.account_id\n            ),\n            '[]'::JSONB\n        ) AS changed_rows\n    FROM changed c\n),\nlast_row AS (\n    SELECT source_updated_at, account_id\n    FROM changed\n    ORDER BY source_updated_at DESC, account_id DESC\n    LIMIT 1\n)\nSELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n    $5::TEXT AS entity_key,\n    $3::TEXT AS start_watermark,\n    $4::TEXT AS start_primary_key,\n    a.rows_extracted,\n    a.changed_rows,\n    lr.source_updated_at::text AS candidate_end_watermark,\n    lr.account_id AS candidate_end_primary_key,\n    (a.rows_extracted > 0) AS changes_found,\n    'entity_source_extraction_complete'::TEXT AS workflow_stage\nFROM aggregated a\nLEFT JOIN last_row lr ON TRUE;",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $json.run_id,\n  $json.entity_run_id,\n  $json.last_watermark,\n  $json.last_primary_key,\n  $json.entity_key\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2016,
+        -320
+      ],
+      "id": "5e97569d-263a-4c98-993d-ee6d4c363057",
+      "name": "ESYNC-020 | Extract Accounts Batch",
+      "credentials": {
+        "postgres": {
+          "id": "g17VKfn4L7IiJ4bk",
+          "name": "LUMORA | Source RO"
+        }
+      },
+      "notes": "COMPONENT ID\nESYNC-020\n\nNODE NAME\nESYNC-020 | Extract Accounts Batch\n\nNODE TYPE\nPostgres \u2014 Execute Query\n\nSTAGE\nStage 8G.2 \u2014 crm.accounts Incremental Extraction\n\nPURPOSE\nReads only crm.accounts rows newer than the committed composite cursor.\n\nCREDENTIAL\nLUMORA | Source RO\n\nDATABASE\nlumora_source_systems\n\nAUTHORIZED SOURCE\ncrm.accounts only\n\nCURSOR\n(source_updated_at, account_id)\n\nPREDICATE\nsource_updated_at > last_watermark\nOR source_updated_at = last_watermark AND account_id > last_primary_key\n\nORDER\nsource_updated_at ASC, account_id ASC\n\nBATCH LIMIT\n100\n\nOUTPUT CONTRACT\nStandardized changed_rows JSONB array, rows_extracted, changes_found, and exact candidate ending cursor as PostgreSQL TEXT.\n\nSECURITY BOUNDARY\nThe source table and columns are fixed in SQL. entity_key must equal crm.accounts. LUMORA | Source RO cannot write source data. No runtime identifier substitution is used.\n\nNO AI\nNO ARBITRARY SQL\nNO SOURCE WRITE\nNO TARGET ACCESS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nVerified in Stage 8G.2 with positive-path database proof and idempotent replay."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "5cb4796b-64f6-4b51-b7c7-f3d23940ae72",
+              "leftValue": "={{ $json.entity_key === 'crm.sales_reps' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2464,
+        -288
+      ],
+      "id": "aece4f8a-c9cb-4e5c-a91c-e84318dd478e",
+      "name": "ESYNC-022 | Route Target Entity",
+      "notes": "COMPONENT ID\nESYNC-022\n\nNODE NAME\nESYNC-022 | Route Target Entity\n\nNODE TYPE\nIF\n\nSTAGE\nStage 8G.4 \u2014 Deterministic Entity Routing\n\nPURPOSE\nFirst fixed target router for an already allowlisted entity with a non-empty batch.\n\nTRUE PATH\ncrm.sales_reps \u2192 ESYNC-011 | Upsert Sales Reps Batch\n\nFALSE PATH\ncrm.accounts or crm.contacts \u2192 ESYNC-026 | Route Remaining Target Entity\n\nSECURITY BOUNDARY\nESYNC-004 validates the entity contract before source extraction. This router never constructs target identifiers dynamically.\n\nNO AI\nNO SQL\nNO DATABASE ACCESS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\ncrm.sales_reps, crm.accounts, and crm.contacts routing verified. crm.activities pending Stage 8G.4 runtime verification."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH payload AS (\n    SELECT *\n    FROM jsonb_populate_recordset(\n        NULL::raw_crm.accounts,\n        $6::JSONB\n    )\n),\nupserted AS (\n    INSERT INTO raw_crm.accounts (\n        account_id,\n        account_name,\n        industry,\n        segment,\n        employee_band,\n        annual_revenue,\n        country,\n        city,\n        owner_rep_id,\n        account_status,\n        source_created_at,\n        source_updated_at,\n        ingested_at\n    )\n    SELECT\n        account_id,\n        account_name,\n        industry,\n        segment,\n        employee_band,\n        annual_revenue,\n        country,\n        city,\n        owner_rep_id,\n        account_status,\n        source_created_at,\n        source_updated_at,\n        NOW()\n    FROM payload\n    ON CONFLICT (account_id)\n    DO UPDATE SET\n        account_name = EXCLUDED.account_name,\n        industry = EXCLUDED.industry,\n        segment = EXCLUDED.segment,\n        employee_band = EXCLUDED.employee_band,\n        annual_revenue = EXCLUDED.annual_revenue,\n        country = EXCLUDED.country,\n        city = EXCLUDED.city,\n        owner_rep_id = EXCLUDED.owner_rep_id,\n        account_status = EXCLUDED.account_status,\n        source_created_at = EXCLUDED.source_created_at,\n        source_updated_at = EXCLUDED.source_updated_at,\n        ingested_at = NOW()\n    RETURNING account_id, source_updated_at\n),\nstats AS (\n    SELECT COUNT(*)::INTEGER AS rows_upserted\n    FROM upserted\n),\nlast_upserted AS (\n    SELECT account_id, source_updated_at\n    FROM upserted\n    ORDER BY source_updated_at DESC, account_id DESC\n    LIMIT 1\n)\nSELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n    $5::TEXT AS entity_key,\n    $3::TEXT AS start_watermark,\n    $4::TEXT AS start_primary_key,\n    $7::INTEGER AS rows_extracted,\n    s.rows_upserted,\n    lu.source_updated_at::text AS end_watermark,\n    lu.account_id AS end_primary_key,\n    (\n        s.rows_upserted = $7::INTEGER\n        AND s.rows_upserted > 0\n        AND lu.source_updated_at = $8::TIMESTAMPTZ\n        AND lu.account_id = $9::TEXT\n    ) AS upsert_verified,\n    'entity_raw_upsert_complete'::TEXT AS workflow_stage\nFROM stats s\nLEFT JOIN last_upserted lu ON TRUE;",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $json.run_id,\n  $json.entity_run_id,\n  $json.start_watermark,\n  $json.start_primary_key,\n  $json.entity_key,\n  JSON.stringify($json.changed_rows),\n  $json.rows_extracted,\n  $json.candidate_end_watermark,\n  $json.candidate_end_primary_key\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2912,
+        -432
+      ],
+      "id": "0db0f539-4636-457b-b243-8fe7155d24dd",
+      "name": "ESYNC-023 | Upsert Accounts Batch",
+      "credentials": {
+        "postgres": {
+          "id": "49PPUUns3Rf0L3VK",
+          "name": "LUMORA | Ingestion RW"
+        }
+      },
+      "notes": "COMPONENT ID\nESYNC-023\n\nNODE NAME\nESYNC-023 | Upsert Accounts Batch\n\nNODE TYPE\nPostgres \u2014 Execute Query\n\nSTAGE\nStage 8G.2 \u2014 crm.accounts Positive Incremental Sync\n\nPURPOSE\nIdempotently persists the extracted crm.accounts batch into raw_crm.accounts.\n\nRESPONSIBILITY\nConverts governed changed_rows JSON into the raw account row type, inserts new accounts, updates existing accounts using account_id, sets ingested_at, and verifies row count plus ending composite cursor.\n\nCREDENTIAL\nLUMORA | Ingestion RW\n\nAUTHORIZED TARGET\nraw_crm.accounts only\n\nIDEMPOTENCY CONTRACT\nON CONFLICT (account_id) DO UPDATE. Replay cannot create duplicate accounts.\n\nVERIFICATION CONTRACT\nupsert_verified = true only when rows_upserted = rows_extracted, at least one row is written, and the last upserted (source_updated_at, account_id) exactly matches the source candidate cursor.\n\nSECURITY BOUNDARY\nFixed target table and columns. No source credential. No runtime table selection. No checkpoint update. No reporting/governance access.\n\nNO AI\nNO ARBITRARY SQL\nNO SOURCE WRITE\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nVerified in Stage 8G.2 with positive-path database proof and idempotent replay."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "a637950f-5431-4222-9641-a36eb6a15d64",
+              "leftValue": "={{ $json.entity_key === 'crm.accounts' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1792,
+        -96
+      ],
+      "id": "e3d2de1a-f01c-445c-9a0b-4a8c320327d2",
+      "name": "ESYNC-024 | Route Remaining Source Entity",
+      "notes": "COMPONENT ID\nESYNC-024\n\nNODE NAME\nESYNC-024 | Route Remaining Source Entity\n\nNODE TYPE\nIF\n\nSTAGE\nStage 8G.4 \u2014 Deterministic Entity Routing\n\nPURPOSE\nSeparates crm.accounts from the remaining allowlisted CRM source branches after crm.sales_reps has already been excluded by ESYNC-019.\n\nTRUE PATH\ncrm.accounts \u2192 ESYNC-020 | Extract Accounts Batch\n\nFALSE PATH\ncrm.contacts or crm.activities \u2192 ESYNC-028 | Route Final CRM Source Entity\n\nFAIL-CLOSED ASSUMPTION\nAn unsupported entity cannot legitimately reach this node because ESYNC-004 requires an exact allowlisted checkpoint contract before ownership is acquired.\n\nSECURITY BOUNDARY\nNo runtime SQL identifier construction. No external routing authority. Only fixed downstream SQL branches.\n\nNO AI\nNO SQL\nNO DATABASE ACCESS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\ncrm.accounts branch verified. crm.contacts branch verified through the next router. crm.activities pending Stage 8G.4 runtime verification."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH changed AS (\n    SELECT\n        contact_id,\n        account_id,\n        first_name,\n        last_name,\n        email,\n        phone,\n        job_title,\n        lifecycle_stage,\n        contact_status,\n        owner_rep_id,\n        source_created_at,\n        source_updated_at\n    FROM crm.contacts\n    WHERE $5::TEXT = 'crm.contacts'\n      AND (\n          source_updated_at > $3::TIMESTAMPTZ\n          OR (\n              source_updated_at = $3::TIMESTAMPTZ\n              AND contact_id > $4::TEXT\n          )\n      )\n    ORDER BY source_updated_at, contact_id\n    LIMIT 100\n),\naggregated AS (\n    SELECT\n        COUNT(*)::INTEGER AS rows_extracted,\n        COALESCE(\n            jsonb_agg(\n                to_jsonb(c)\n                ORDER BY c.source_updated_at, c.contact_id\n            ),\n            '[]'::JSONB\n        ) AS changed_rows\n    FROM changed c\n),\nlast_row AS (\n    SELECT source_updated_at, contact_id\n    FROM changed\n    ORDER BY source_updated_at DESC, contact_id DESC\n    LIMIT 1\n)\nSELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n    $5::TEXT AS entity_key,\n    $3::TEXT AS start_watermark,\n    $4::TEXT AS start_primary_key,\n    a.rows_extracted,\n    a.changed_rows,\n    lr.source_updated_at::text AS candidate_end_watermark,\n    lr.contact_id AS candidate_end_primary_key,\n    (a.rows_extracted > 0) AS changes_found,\n    'entity_source_extraction_complete'::TEXT AS workflow_stage\nFROM aggregated a\nLEFT JOIN last_row lr ON TRUE;",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $json.run_id,\n  $json.entity_run_id,\n  $json.last_watermark,\n  $json.last_primary_key,\n  $json.entity_key\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2016,
+        -448
+      ],
+      "id": "fc3bb107-141d-41b7-b68c-5628f4de25a2",
+      "name": "ESYNC-025 | Extract Contacts Batch",
+      "credentials": {
+        "postgres": {
+          "id": "g17VKfn4L7IiJ4bk",
+          "name": "LUMORA | Source RO"
+        }
+      },
+      "notes": "COMPONENT ID\nESYNC-025\n\nNODE NAME\nESYNC-025 | Extract Contacts Batch\n\nNODE TYPE\nPostgres \u2014 Execute Query\n\nSTAGE\nStage 8G.3 \u2014 crm.contacts Incremental Extraction\n\nPURPOSE\nReads only crm.contacts rows newer than the committed composite cursor.\n\nCREDENTIAL\nLUMORA | Source RO\n\nDATABASE\nlumora_source_systems\n\nAUTHORIZED SOURCE\ncrm.contacts only\n\nCURSOR\n(source_updated_at, contact_id)\n\nPREDICATE\nsource_updated_at > last_watermark\nOR source_updated_at = last_watermark AND contact_id > last_primary_key\n\nORDER\nsource_updated_at ASC, contact_id ASC\n\nBATCH LIMIT\n100\n\nOUTPUT CONTRACT\nStandardized changed_rows JSONB array, rows_extracted, changes_found, and exact candidate ending cursor as PostgreSQL TEXT.\n\nSECURITY BOUNDARY\nThe source table and columns are fixed in SQL. entity_key must equal crm.contacts. LUMORA | Source RO cannot write source data. No runtime identifier substitution is used.\n\nNO AI\nNO ARBITRARY SQL\nNO SOURCE WRITE\nNO TARGET ACCESS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nVerified in Stage 8G.3 with positive-path database proof and idempotent replay."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "297eeb5c-ef13-4c49-9a78-c593c127b52c",
+              "leftValue": "={{ $json.entity_key === 'crm.accounts' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2688,
+        -288
+      ],
+      "id": "034c6603-4aff-4a77-812c-9c6a13cff754",
+      "name": "ESYNC-026 | Route Remaining Target Entity",
+      "notes": "COMPONENT ID\nESYNC-026\n\nNODE NAME\nESYNC-026 | Route Remaining Target Entity\n\nNODE TYPE\nIF\n\nSTAGE\nStage 8G.4 \u2014 Deterministic Entity Routing\n\nPURPOSE\nSeparates crm.accounts from the remaining allowlisted CRM target branches after crm.sales_reps has already been excluded by ESYNC-022.\n\nTRUE PATH\ncrm.accounts \u2192 ESYNC-023 | Upsert Accounts Batch\n\nFALSE PATH\ncrm.contacts or crm.activities \u2192 ESYNC-030 | Route Final CRM Target Entity\n\nFAIL-CLOSED ASSUMPTION\nAn unsupported entity cannot legitimately reach this node because ESYNC-004 validated the exact entity/source/target contract before extraction.\n\nSECURITY BOUNDARY\nNo dynamic target identifiers. No external routing authority. Only fixed downstream SQL branches.\n\nNO AI\nNO SQL\nNO DATABASE ACCESS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\ncrm.accounts branch verified. crm.contacts branch verified through the next router. crm.activities pending Stage 8G.4 runtime verification."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH payload AS (\n    SELECT *\n    FROM jsonb_populate_recordset(\n        NULL::raw_crm.contacts,\n        $6::JSONB\n    )\n),\nupserted AS (\n    INSERT INTO raw_crm.contacts (\n        contact_id,\n        account_id,\n        first_name,\n        last_name,\n        email,\n        phone,\n        job_title,\n        lifecycle_stage,\n        contact_status,\n        owner_rep_id,\n        source_created_at,\n        source_updated_at,\n        ingested_at\n    )\n    SELECT\n        contact_id,\n        account_id,\n        first_name,\n        last_name,\n        email,\n        phone,\n        job_title,\n        lifecycle_stage,\n        contact_status,\n        owner_rep_id,\n        source_created_at,\n        source_updated_at,\n        NOW()\n    FROM payload\n    ON CONFLICT (contact_id)\n    DO UPDATE SET\n        account_id = EXCLUDED.account_id,\n        first_name = EXCLUDED.first_name,\n        last_name = EXCLUDED.last_name,\n        email = EXCLUDED.email,\n        phone = EXCLUDED.phone,\n        job_title = EXCLUDED.job_title,\n        lifecycle_stage = EXCLUDED.lifecycle_stage,\n        contact_status = EXCLUDED.contact_status,\n        owner_rep_id = EXCLUDED.owner_rep_id,\n        source_created_at = EXCLUDED.source_created_at,\n        source_updated_at = EXCLUDED.source_updated_at,\n        ingested_at = NOW()\n    RETURNING contact_id, source_updated_at\n),\nstats AS (\n    SELECT COUNT(*)::INTEGER AS rows_upserted\n    FROM upserted\n),\nlast_upserted AS (\n    SELECT contact_id, source_updated_at\n    FROM upserted\n    ORDER BY source_updated_at DESC, contact_id DESC\n    LIMIT 1\n)\nSELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n    $5::TEXT AS entity_key,\n    $3::TEXT AS start_watermark,\n    $4::TEXT AS start_primary_key,\n    $7::INTEGER AS rows_extracted,\n    s.rows_upserted,\n    lu.source_updated_at::text AS end_watermark,\n    lu.contact_id AS end_primary_key,\n    (\n        s.rows_upserted = $7::INTEGER\n        AND s.rows_upserted > 0\n        AND lu.source_updated_at = $8::TIMESTAMPTZ\n        AND lu.contact_id = $9::TEXT\n    ) AS upsert_verified,\n    'entity_raw_upsert_complete'::TEXT AS workflow_stage\nFROM stats s\nLEFT JOIN last_upserted lu ON TRUE;",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $json.run_id,\n  $json.entity_run_id,\n  $json.start_watermark,\n  $json.start_primary_key,\n  $json.entity_key,\n  JSON.stringify($json.changed_rows),\n  $json.rows_extracted,\n  $json.candidate_end_watermark,\n  $json.candidate_end_primary_key\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2912,
+        -576
+      ],
+      "id": "a96c6c5f-79a7-4c2d-bc60-93dc1497f657",
+      "name": "ESYNC-027 | Upsert Contacts Batch",
+      "credentials": {
+        "postgres": {
+          "id": "49PPUUns3Rf0L3VK",
+          "name": "LUMORA | Ingestion RW"
+        }
+      },
+      "notes": "COMPONENT ID\nESYNC-027\n\nNODE NAME\nESYNC-027 | Upsert Contacts Batch\n\nNODE TYPE\nPostgres \u2014 Execute Query\n\nSTAGE\nStage 8G.3 \u2014 crm.contacts Positive Incremental Sync\n\nPURPOSE\nIdempotently persists the extracted crm.contacts batch into raw_crm.contacts.\n\nRESPONSIBILITY\nConverts governed changed_rows JSON into the raw contact row type, inserts new contacts, updates existing contacts using contact_id, sets ingested_at, and verifies row count plus ending composite cursor.\n\nCREDENTIAL\nLUMORA | Ingestion RW\n\nAUTHORIZED TARGET\nraw_crm.contacts only\n\nIDEMPOTENCY CONTRACT\nON CONFLICT (contact_id) DO UPDATE. Replay cannot create duplicate contacts.\n\nVERIFICATION CONTRACT\nupsert_verified = true only when rows_upserted = rows_extracted, at least one row is written, and the last upserted (source_updated_at, contact_id) exactly matches the source candidate cursor.\n\nSECURITY BOUNDARY\nFixed target table and columns. No source credential. No runtime table selection. No checkpoint update. No reporting/governance access.\n\nNO AI\nNO ARBITRARY SQL\nNO SOURCE WRITE\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nVerified in Stage 8G.3 with positive-path database proof and idempotent replay."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "be874833-d806-4db0-ad3d-7832d1e83dd4",
+              "leftValue": "={{ $json.entity_key === 'crm.contacts' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2016,
+        -96
+      ],
+      "id": "03f0d6d6-e2f7-4f3e-8c04-c127f1451b1a",
+      "name": "ESYNC-028 | Route Final CRM Source Entity",
+      "notes": "COMPONENT ID\nESYNC-028\n\nNODE NAME\nESYNC-028 | Route Final CRM Source Entity\n\nNODE TYPE\nIF\n\nSTAGE\nStage 8G.5 \u2014 Deterministic Entity Routing\n\nPURPOSE\nSeparates the final two currently allowlisted CRM source branches after crm.sales_reps and crm.accounts have already been excluded.\n\nTRUE PATH\ncrm.contacts \u2192 ESYNC-025 | Extract Contacts Batch\n\nFALSE PATH\ncrm.activities \u2192 ESYNC-029 | Extract Activities Batch\n\nFAIL-CLOSED ASSUMPTION\nOnly crm.contacts or crm.activities can legitimately reach this router because ESYNC-004 validates the exact allowlisted checkpoint contract before ownership acquisition.\n\nSECURITY BOUNDARY\nThis node never constructs SQL identifiers. Each branch terminates in a fixed SQL statement against one approved source table.\n\nNO AI\nNO SQL\nNO DATABASE ACCESS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\ncrm.contacts route verified. crm.activities route verified. This CRM router is preserved unchanged for the verified CRM branches."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH changed AS (\n    SELECT\n        activity_id,\n        deal_id,\n        contact_id,\n        account_id,\n        rep_id,\n        activity_type,\n        activity_outcome,\n        activity_at,\n        next_step_due_at,\n        notes_summary,\n        source_created_at,\n        source_updated_at\n    FROM crm.activities\n    WHERE $5::TEXT = 'crm.activities'\n      AND (\n          source_updated_at > $3::TIMESTAMPTZ\n          OR (\n              source_updated_at = $3::TIMESTAMPTZ\n              AND activity_id > $4::TEXT\n          )\n      )\n    ORDER BY source_updated_at, activity_id\n    LIMIT 100\n),\naggregated AS (\n    SELECT\n        COUNT(*)::INTEGER AS rows_extracted,\n        COALESCE(\n            jsonb_agg(\n                to_jsonb(c)\n                ORDER BY c.source_updated_at, c.activity_id\n            ),\n            '[]'::JSONB\n        ) AS changed_rows\n    FROM changed c\n),\nlast_row AS (\n    SELECT source_updated_at, activity_id\n    FROM changed\n    ORDER BY source_updated_at DESC, activity_id DESC\n    LIMIT 1\n)\nSELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n    $5::TEXT AS entity_key,\n    $3::TEXT AS start_watermark,\n    $4::TEXT AS start_primary_key,\n    a.rows_extracted,\n    a.changed_rows,\n    lr.source_updated_at::text AS candidate_end_watermark,\n    lr.activity_id AS candidate_end_primary_key,\n    (a.rows_extracted > 0) AS changes_found,\n    'entity_source_extraction_complete'::TEXT AS workflow_stage\nFROM aggregated a\nLEFT JOIN last_row lr ON TRUE;",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $json.run_id,\n  $json.entity_run_id,\n  $json.last_watermark,\n  $json.last_primary_key,\n  $json.entity_key\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2240,
+        -576
+      ],
+      "id": "eb1570f4-c4b8-4660-9672-412a9addb1a6",
+      "name": "ESYNC-029 | Extract Activities Batch",
+      "credentials": {
+        "postgres": {
+          "id": "g17VKfn4L7IiJ4bk",
+          "name": "LUMORA | Source RO"
+        }
+      },
+      "notes": "COMPONENT ID\nESYNC-029\n\nNODE NAME\nESYNC-029 | Extract Activities Batch\n\nNODE TYPE\nPostgres \u2014 Execute Query\n\nSTAGE\nStage 8G.4 \u2014 crm.activities Incremental Extraction\n\nPURPOSE\nReads only crm.activities rows newer than the committed composite cursor.\n\nCREDENTIAL\nLUMORA | Source RO\n\nDATABASE\nlumora_source_systems\n\nAUTHORIZED SOURCE\ncrm.activities only\n\nCURSOR\n(source_updated_at, activity_id)\n\nPREDICATE\nsource_updated_at > last_watermark\nOR source_updated_at = last_watermark AND activity_id > last_primary_key\n\nORDER\nsource_updated_at ASC, activity_id ASC\n\nBATCH LIMIT\n100\n\nOUTPUT CONTRACT\nStandardized changed_rows JSONB array, rows_extracted, changes_found, and exact candidate ending cursor as PostgreSQL TEXT.\n\nSECURITY BOUNDARY\nThe source table and columns are fixed in SQL. entity_key must equal crm.activities. LUMORA | Source RO cannot write source data. No runtime identifier substitution is used.\n\nNO AI\nNO ARBITRARY SQL\nNO SOURCE WRITE\nNO TARGET ACCESS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nPending Stage 8G.4 runtime verification."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "90b95771-9eae-40d8-bd23-ba233e8633d5",
+              "leftValue": "={{ $json.entity_key === 'crm.contacts' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2912,
+        -288
+      ],
+      "id": "1ff922e5-600c-4556-95e1-5d8c09c5ee35",
+      "name": "ESYNC-030 | Route Final CRM Target Entity",
+      "notes": "COMPONENT ID\nESYNC-030\n\nNODE NAME\nESYNC-030 | Route Final CRM Target Entity\n\nNODE TYPE\nIF\n\nSTAGE\nStage 8G.5 \u2014 Deterministic Entity Routing\n\nPURPOSE\nSeparates the final two currently allowlisted CRM target branches after crm.sales_reps and crm.accounts have already been excluded.\n\nTRUE PATH\ncrm.contacts \u2192 ESYNC-027 | Upsert Contacts Batch\n\nFALSE PATH\ncrm.activities \u2192 ESYNC-031 | Upsert Activities Batch\n\nFAIL-CLOSED ASSUMPTION\nOnly crm.contacts or crm.activities can legitimately reach this router because ESYNC-004 validated the exact allowlisted source/target contract before extraction.\n\nSECURITY BOUNDARY\nNo runtime target identifiers. Each branch uses one fixed target table and fixed column contract.\n\nNO AI\nNO SQL\nNO DATABASE ACCESS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\ncrm.contacts route verified. crm.activities route verified. This CRM router is preserved unchanged for the verified CRM branches."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH payload AS (\n    SELECT *\n    FROM jsonb_populate_recordset(\n        NULL::raw_crm.activities,\n        $6::JSONB\n    )\n),\nupserted AS (\n    INSERT INTO raw_crm.activities (\n        activity_id,\n        deal_id,\n        contact_id,\n        account_id,\n        rep_id,\n        activity_type,\n        activity_outcome,\n        activity_at,\n        next_step_due_at,\n        notes_summary,\n        source_created_at,\n        source_updated_at,\n        ingested_at\n    )\n    SELECT\n        activity_id,\n        deal_id,\n        contact_id,\n        account_id,\n        rep_id,\n        activity_type,\n        activity_outcome,\n        activity_at,\n        next_step_due_at,\n        notes_summary,\n        source_created_at,\n        source_updated_at,\n        NOW()\n    FROM payload\n    ON CONFLICT (activity_id)\n    DO UPDATE SET\n        deal_id = EXCLUDED.deal_id,\n        contact_id = EXCLUDED.contact_id,\n        account_id = EXCLUDED.account_id,\n        rep_id = EXCLUDED.rep_id,\n        activity_type = EXCLUDED.activity_type,\n        activity_outcome = EXCLUDED.activity_outcome,\n        activity_at = EXCLUDED.activity_at,\n        next_step_due_at = EXCLUDED.next_step_due_at,\n        notes_summary = EXCLUDED.notes_summary,\n        source_created_at = EXCLUDED.source_created_at,\n        source_updated_at = EXCLUDED.source_updated_at,\n        ingested_at = NOW()\n    RETURNING activity_id, source_updated_at\n),\nstats AS (\n    SELECT COUNT(*)::INTEGER AS rows_upserted\n    FROM upserted\n),\nlast_upserted AS (\n    SELECT activity_id, source_updated_at\n    FROM upserted\n    ORDER BY source_updated_at DESC, activity_id DESC\n    LIMIT 1\n)\nSELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n    $5::TEXT AS entity_key,\n    $3::TEXT AS start_watermark,\n    $4::TEXT AS start_primary_key,\n    $7::INTEGER AS rows_extracted,\n    s.rows_upserted,\n    lu.source_updated_at::text AS end_watermark,\n    lu.activity_id AS end_primary_key,\n    (\n        s.rows_upserted = $7::INTEGER\n        AND s.rows_upserted > 0\n        AND lu.source_updated_at = $8::TIMESTAMPTZ\n        AND lu.activity_id = $9::TEXT\n    ) AS upsert_verified,\n    'entity_raw_upsert_complete'::TEXT AS workflow_stage\nFROM stats s\nLEFT JOIN last_upserted lu ON TRUE;",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $json.run_id,\n  $json.entity_run_id,\n  $json.start_watermark,\n  $json.start_primary_key,\n  $json.entity_key,\n  JSON.stringify($json.changed_rows),\n  $json.rows_extracted,\n  $json.candidate_end_watermark,\n  $json.candidate_end_primary_key\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        3136,
+        -720
+      ],
+      "id": "e387e3cf-c8e9-4423-a065-d46165718b9a",
+      "name": "ESYNC-031 | Upsert Activities Batch",
+      "credentials": {
+        "postgres": {
+          "id": "49PPUUns3Rf0L3VK",
+          "name": "LUMORA | Ingestion RW"
+        }
+      },
+      "notes": "COMPONENT ID\nESYNC-031\n\nNODE NAME\nESYNC-031 | Upsert Activities Batch\n\nNODE TYPE\nPostgres \u2014 Execute Query\n\nSTAGE\nStage 8G.4 \u2014 crm.activities Positive Incremental Sync\n\nPURPOSE\nIdempotently persists the extracted crm.activities batch into raw_crm.activities.\n\nRESPONSIBILITY\nConverts governed changed_rows JSON into the raw activity row type, inserts new activities, updates existing activities using activity_id, sets ingested_at, and verifies row count plus ending composite cursor.\n\nCREDENTIAL\nLUMORA | Ingestion RW\n\nAUTHORIZED TARGET\nraw_crm.activities only\n\nIDEMPOTENCY CONTRACT\nON CONFLICT (activity_id) DO UPDATE. Replay cannot create duplicate activities.\n\nVERIFICATION CONTRACT\nupsert_verified = true only when rows_upserted = rows_extracted, at least one row is written, and the last upserted (source_updated_at, activity_id) exactly matches the source candidate cursor.\n\nSECURITY BOUNDARY\nFixed target table and columns. No source credential. No runtime table selection. No checkpoint update. No reporting/governance access.\n\nNO AI\nNO ARBITRARY SQL\nNO SOURCE WRITE\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nPending Stage 8G.4 runtime verification."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "0388ab74-246d-4fb6-94e1-984eea9a53f6",
+              "leftValue": "={{ $json.entity_key === 'marketing.campaigns' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2016,
+        32
+      ],
+      "id": "d2f2386c-f91e-4963-bb75-fcbb9be71ca4",
+      "name": "ESYNC-032 | Route Marketing Source Entity",
+      "notes": "COMPONENT ID\nESYNC-032\n\nNODE NAME\nESYNC-032 | Route Marketing Source Entity\n\nNODE TYPE\nIF\n\nSTAGE\nStage 8G.6 \u2014 Deterministic Entity Routing\n\nPURPOSE\nRoutes the first approved Marketing source entity after crm.sales_reps and crm.accounts have been excluded upstream.\n\nTRUE PATH\nmarketing.campaigns \u2192 ESYNC-033 | Extract Campaigns Batch\n\nFALSE PATH\nmarketing.leads or remaining CRM entity \u2192 ESYNC-036 | Route Marketing Leads Source Entity\n\nSECURITY BOUNDARY\nNo dynamic schema/table identifiers. Each approved entity terminates in a fixed SQL extraction branch. Unsupported checkpoint contracts fail closed in ESYNC-004 before routing.\n\nNO AI\nNO SQL CONSTRUCTION\nNO DATABASE ACCESS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nmarketing.campaigns route verified. marketing.leads route pending Stage 8G.6 runtime verification."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH changed AS (\n    SELECT\n        campaign_id,\n        campaign_name,\n        channel,\n        campaign_type,\n        start_date,\n        end_date,\n        budget,\n        status,\n        source_created_at,\n        source_updated_at\n    FROM marketing.campaigns\n    WHERE $5::TEXT = 'marketing.campaigns'\n      AND (\n          source_updated_at > $3::TIMESTAMPTZ\n          OR (\n              source_updated_at = $3::TIMESTAMPTZ\n              AND campaign_id > $4::TEXT\n          )\n      )\n    ORDER BY source_updated_at, campaign_id\n    LIMIT 100\n),\naggregated AS (\n    SELECT\n        COUNT(*)::INTEGER AS rows_extracted,\n        COALESCE(\n            jsonb_agg(\n                to_jsonb(c)\n                ORDER BY c.source_updated_at, c.campaign_id\n            ),\n            '[]'::JSONB\n        ) AS changed_rows\n    FROM changed c\n),\nlast_row AS (\n    SELECT source_updated_at, campaign_id\n    FROM changed\n    ORDER BY source_updated_at DESC, campaign_id DESC\n    LIMIT 1\n)\nSELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n    $5::TEXT AS entity_key,\n    $3::TEXT AS start_watermark,\n    $4::TEXT AS start_primary_key,\n    a.rows_extracted,\n    a.changed_rows,\n    lr.source_updated_at::text AS candidate_end_watermark,\n    lr.campaign_id AS candidate_end_primary_key,\n    (a.rows_extracted > 0) AS changes_found,\n    'entity_source_extraction_complete'::TEXT AS workflow_stage\nFROM aggregated a\nLEFT JOIN last_row lr ON TRUE;",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $json.run_id,\n  $json.entity_run_id,\n  $json.last_watermark,\n  $json.last_primary_key,\n  $json.entity_key\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2240,
+        -720
+      ],
+      "id": "db62c448-eb2b-43a0-9f6e-40c75240217e",
+      "name": "ESYNC-033 | Extract Campaigns Batch",
+      "credentials": {
+        "postgres": {
+          "id": "g17VKfn4L7IiJ4bk",
+          "name": "LUMORA | Source RO"
+        }
+      },
+      "notes": "COMPONENT ID\nESYNC-033\n\nNODE NAME\nESYNC-033 | Extract Campaigns Batch\n\nNODE TYPE\nPostgres \u2014 Execute Query\n\nSTAGE\nStage 8G.5 \u2014 marketing.campaigns Incremental Extraction\n\nPURPOSE\nReads only marketing.campaigns rows newer than the committed composite cursor.\n\nCREDENTIAL\nLUMORA | Source RO\n\nDATABASE\nlumora_source_systems\n\nAUTHORIZED SOURCE\nmarketing.campaigns only\n\nCURSOR\n(source_updated_at, campaign_id)\n\nPREDICATE\nsource_updated_at > last_watermark\nOR source_updated_at = last_watermark AND campaign_id > last_primary_key\n\nORDER\nsource_updated_at ASC, campaign_id ASC\n\nBATCH LIMIT\n100\n\nOUTPUT CONTRACT\nStandardized changed_rows JSONB array, rows_extracted, changes_found, and exact candidate ending cursor as PostgreSQL TEXT.\n\nSECURITY BOUNDARY\nThe source table and columns are fixed in SQL. entity_key must equal marketing.campaigns. LUMORA | Source RO cannot write source data. No runtime identifier substitution is used.\n\nNO AI\nNO ARBITRARY SQL\nNO SOURCE WRITE\nNO TARGET ACCESS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nPending Stage 8G.5 runtime verification."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "d038f8f3-d098-4720-b7aa-574509fdeeba",
+              "leftValue": "={{ $json.entity_key === 'marketing.campaigns' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2912,
+        -144
+      ],
+      "id": "59a22a97-27aa-4a3f-a57a-a3509596d690",
+      "name": "ESYNC-034 | Route Marketing Target Entity",
+      "notes": "COMPONENT ID\nESYNC-034\n\nNODE NAME\nESYNC-034 | Route Marketing Target Entity\n\nNODE TYPE\nIF\n\nSTAGE\nStage 8G.6 \u2014 Deterministic Entity Routing\n\nPURPOSE\nRoutes the first approved Marketing target entity after crm.sales_reps and crm.accounts have been excluded upstream.\n\nTRUE PATH\nmarketing.campaigns \u2192 ESYNC-035 | Upsert Campaigns Batch\n\nFALSE PATH\nmarketing.leads or remaining CRM entity \u2192 ESYNC-038 | Route Marketing Leads Target Entity\n\nSECURITY BOUNDARY\nNo dynamic identifiers. Each target branch uses a fixed approved INSERT ... ON CONFLICT statement against one raw table.\n\nNO AI\nNO SQL CONSTRUCTION\nNO DATABASE ACCESS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nmarketing.campaigns target route verified. marketing.leads target route pending Stage 8G.6 runtime verification."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH payload AS (\n    SELECT *\n    FROM jsonb_populate_recordset(\n        NULL::raw_marketing.campaigns,\n        $6::JSONB\n    )\n),\nupserted AS (\n    INSERT INTO raw_marketing.campaigns (\n        campaign_id,\n        campaign_name,\n        channel,\n        campaign_type,\n        start_date,\n        end_date,\n        budget,\n        status,\n        source_created_at,\n        source_updated_at,\n        ingested_at\n    )\n    SELECT\n        campaign_id,\n        campaign_name,\n        channel,\n        campaign_type,\n        start_date,\n        end_date,\n        budget,\n        status,\n        source_created_at,\n        source_updated_at,\n        NOW()\n    FROM payload\n    ON CONFLICT (campaign_id)\n    DO UPDATE SET\n        campaign_name = EXCLUDED.campaign_name,\n        channel = EXCLUDED.channel,\n        campaign_type = EXCLUDED.campaign_type,\n        start_date = EXCLUDED.start_date,\n        end_date = EXCLUDED.end_date,\n        budget = EXCLUDED.budget,\n        status = EXCLUDED.status,\n        source_created_at = EXCLUDED.source_created_at,\n        source_updated_at = EXCLUDED.source_updated_at,\n        ingested_at = NOW()\n    RETURNING campaign_id, source_updated_at\n),\nstats AS (\n    SELECT COUNT(*)::INTEGER AS rows_upserted\n    FROM upserted\n),\nlast_upserted AS (\n    SELECT campaign_id, source_updated_at\n    FROM upserted\n    ORDER BY source_updated_at DESC, campaign_id DESC\n    LIMIT 1\n)\nSELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n    $5::TEXT AS entity_key,\n    $3::TEXT AS start_watermark,\n    $4::TEXT AS start_primary_key,\n    $7::INTEGER AS rows_extracted,\n    s.rows_upserted,\n    lu.source_updated_at::text AS end_watermark,\n    lu.campaign_id AS end_primary_key,\n    (\n        s.rows_upserted = $7::INTEGER\n        AND s.rows_upserted > 0\n        AND lu.source_updated_at = $8::TIMESTAMPTZ\n        AND lu.campaign_id = $9::TEXT\n    ) AS upsert_verified,\n    'entity_raw_upsert_complete'::TEXT AS workflow_stage\nFROM stats s\nLEFT JOIN last_upserted lu ON TRUE;",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $json.run_id,\n  $json.entity_run_id,\n  $json.start_watermark,\n  $json.start_primary_key,\n  $json.entity_key,\n  JSON.stringify($json.changed_rows),\n  $json.rows_extracted,\n  $json.candidate_end_watermark,\n  $json.candidate_end_primary_key\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        3360,
+        -864
+      ],
+      "id": "0822e71e-e5a2-4c10-8196-06bddbadb321",
+      "name": "ESYNC-035 | Upsert Campaigns Batch",
+      "credentials": {
+        "postgres": {
+          "id": "49PPUUns3Rf0L3VK",
+          "name": "LUMORA | Ingestion RW"
+        }
+      },
+      "notes": "COMPONENT ID\nESYNC-035\n\nNODE NAME\nESYNC-035 | Upsert Campaigns Batch\n\nNODE TYPE\nPostgres \u2014 Execute Query\n\nSTAGE\nStage 8G.5 \u2014 marketing.campaigns Positive Incremental Sync\n\nPURPOSE\nIdempotently persists the extracted marketing.campaigns batch into raw_marketing.campaigns.\n\nRESPONSIBILITY\nConverts governed changed_rows JSON into the raw campaign row type, inserts new campaigns, updates existing campaigns using campaign_id, sets ingested_at, and verifies row count plus ending composite cursor.\n\nCREDENTIAL\nLUMORA | Ingestion RW\n\nAUTHORIZED TARGET\nraw_marketing.campaigns only\n\nIDEMPOTENCY CONTRACT\nON CONFLICT (campaign_id) DO UPDATE. Replay cannot create duplicate campaign records.\n\nVERIFICATION CONTRACT\nupsert_verified = true only when rows_upserted = rows_extracted, at least one row is written, and the last upserted (source_updated_at, campaign_id) exactly matches the source candidate cursor.\n\nSECURITY BOUNDARY\nFixed target table and columns. No source credential. No runtime table selection. No checkpoint update. No reporting/governance access.\n\nNO AI\nNO ARBITRARY SQL\nNO SOURCE WRITE\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nPending Stage 8G.5 runtime verification."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "e2b56c5d-5af1-40d1-9b3b-7796f2ccf399",
+              "leftValue": "={{ $json.entity_key === 'marketing.leads' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2240,
+        32
+      ],
+      "id": "88ec3da1-6a9f-49bb-b31b-2d4a42e78cea",
+      "name": "ESYNC-036 | Route Marketing Leads Source Entity",
+      "notes": "COMPONENT ID\nESYNC-036\n\nNODE NAME\nESYNC-036 | Route Marketing Leads Source Entity\n\nNODE TYPE\nIF\n\nSTAGE\nStage 8G.7 \u2014 Deterministic Entity Routing\n\nPURPOSE\nSeparates marketing.leads after marketing.campaigns has been excluded upstream.\n\nTRUE PATH\nmarketing.leads \u2192 ESYNC-037 | Extract Leads Batch\n\nFALSE PATH\nbilling.invoices or verified remaining CRM entity \u2192 ESYNC-040 | Route Billing Invoices Source Entity\n\nFAIL-CLOSED ASSUMPTION\nOnly an entity whose checkpoint contract passed ESYNC-004 can reach this router.\n\nSECURITY BOUNDARY\nNo runtime-selected SQL identifiers. No external routing authority. Each approved TRUE branch ends in fixed SQL.\n\nNO AI\nNO SQL CONSTRUCTION\nNO DATABASE ACCESS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nmarketing.leads route verified. billing.invoices routing added and pending Stage 8G.7 runtime verification."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH changed AS (\n    SELECT\n        lead_id,\n        contact_id,\n        account_id,\n        campaign_id,\n        owner_rep_id,\n        lead_source,\n        lead_status,\n        utm_source,\n        utm_medium,\n        utm_campaign,\n        lead_created_at,\n        first_response_at,\n        mql_at,\n        sql_at,\n        source_updated_at\n    FROM marketing.leads\n    WHERE $5::TEXT = 'marketing.leads'\n      AND (\n          source_updated_at > $3::TIMESTAMPTZ\n          OR (\n              source_updated_at = $3::TIMESTAMPTZ\n              AND lead_id > $4::TEXT\n          )\n      )\n    ORDER BY source_updated_at, lead_id\n    LIMIT 100\n),\naggregated AS (\n    SELECT\n        COUNT(*)::INTEGER AS rows_extracted,\n        COALESCE(\n            jsonb_agg(\n                to_jsonb(c)\n                ORDER BY c.source_updated_at, c.lead_id\n            ),\n            '[]'::JSONB\n        ) AS changed_rows\n    FROM changed c\n),\nlast_row AS (\n    SELECT source_updated_at, lead_id\n    FROM changed\n    ORDER BY source_updated_at DESC, lead_id DESC\n    LIMIT 1\n)\nSELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n    $5::TEXT AS entity_key,\n    $3::TEXT AS start_watermark,\n    $4::TEXT AS start_primary_key,\n    a.rows_extracted,\n    a.changed_rows,\n    lr.source_updated_at::text AS candidate_end_watermark,\n    lr.lead_id AS candidate_end_primary_key,\n    (a.rows_extracted > 0) AS changes_found,\n    'entity_source_extraction_complete'::TEXT AS workflow_stage\nFROM aggregated a\nLEFT JOIN last_row lr ON TRUE;",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $json.run_id,\n  $json.entity_run_id,\n  $json.last_watermark,\n  $json.last_primary_key,\n  $json.entity_key\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2464,
+        -864
+      ],
+      "id": "728630c4-26e2-4264-93ab-72657ddb2af7",
+      "name": "ESYNC-037 | Extract Leads Batch",
+      "credentials": {
+        "postgres": {
+          "id": "g17VKfn4L7IiJ4bk",
+          "name": "LUMORA | Source RO"
+        }
+      },
+      "notes": "COMPONENT ID\nESYNC-037\n\nNODE NAME\nESYNC-037 | Extract Leads Batch\n\nNODE TYPE\nPostgres \u2014 Execute Query\n\nSTAGE\nStage 8G.6 \u2014 marketing.leads Incremental Extraction\n\nPURPOSE\nReads only marketing.leads rows strictly after the claimed composite cursor.\n\nCREDENTIAL\nLUMORA | Source RO\n\nSOURCE\nlumora_source_systems.marketing.leads\n\nCURSOR CONTRACT\n(source_updated_at, lead_id) > (last_watermark, last_primary_key)\nORDER BY source_updated_at, lead_id\nLIMIT 100\n\nAUTHORIZED OUTPUT\nrun_id, entity_run_id, entity_key, start cursor, rows_extracted, changed_rows, candidate end cursor, changes_found, workflow_stage.\n\nSECURITY BOUNDARY\nRead-only source credential. Fixed schema/table/columns. entity_key is checked as a value guard and never interpolated as an SQL identifier.\n\nFAILURE BEHAVIOR\nDatabase/query failure stops before raw upsert or checkpoint advancement; workflow error handling receives the failure.\n\nNO AI\nNO SOURCE WRITE\nNO DYNAMIC SQL IDENTIFIERS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nPending Stage 8G.6 runtime verification."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ae6d661e-2359-463f-b562-3c024a83d163",
+              "leftValue": "={{ $json.entity_key === 'marketing.leads' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3136,
+        -144
+      ],
+      "id": "18be87c9-1431-45f0-839f-c2eb8ea47349",
+      "name": "ESYNC-038 | Route Marketing Leads Target Entity",
+      "notes": "COMPONENT ID\nESYNC-038\n\nNODE NAME\nESYNC-038 | Route Marketing Leads Target Entity\n\nNODE TYPE\nIF\n\nSTAGE\nStage 8G.7 \u2014 Deterministic Entity Routing\n\nPURPOSE\nSeparates marketing.leads after marketing.campaigns has been excluded upstream on the changed-row target path.\n\nTRUE PATH\nmarketing.leads \u2192 ESYNC-039 | Upsert Leads Batch\n\nFALSE PATH\nbilling.invoices or verified remaining CRM entity \u2192 ESYNC-042 | Route Billing Invoices Target Entity\n\nSECURITY BOUNDARY\nNo runtime-selected SQL identifiers. Each approved entity writes only through its fixed raw-table upsert branch.\n\nNO AI\nNO SQL CONSTRUCTION\nNO DATABASE ACCESS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nmarketing.leads route verified. billing.invoices routing added and pending Stage 8G.7 runtime verification."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH payload AS (\n    SELECT *\n    FROM jsonb_populate_recordset(\n        NULL::raw_marketing.leads,\n        $6::JSONB\n    )\n),\nupserted AS (\n    INSERT INTO raw_marketing.leads (\n        lead_id,\n        contact_id,\n        account_id,\n        campaign_id,\n        owner_rep_id,\n        lead_source,\n        lead_status,\n        utm_source,\n        utm_medium,\n        utm_campaign,\n        lead_created_at,\n        first_response_at,\n        mql_at,\n        sql_at,\n        source_updated_at,\n        ingested_at\n    )\n    SELECT\n        lead_id,\n        contact_id,\n        account_id,\n        campaign_id,\n        owner_rep_id,\n        lead_source,\n        lead_status,\n        utm_source,\n        utm_medium,\n        utm_campaign,\n        lead_created_at,\n        first_response_at,\n        mql_at,\n        sql_at,\n        source_updated_at,\n        NOW()\n    FROM payload\n    ON CONFLICT (lead_id)\n    DO UPDATE SET\n        contact_id = EXCLUDED.contact_id,\n        account_id = EXCLUDED.account_id,\n        campaign_id = EXCLUDED.campaign_id,\n        owner_rep_id = EXCLUDED.owner_rep_id,\n        lead_source = EXCLUDED.lead_source,\n        lead_status = EXCLUDED.lead_status,\n        utm_source = EXCLUDED.utm_source,\n        utm_medium = EXCLUDED.utm_medium,\n        utm_campaign = EXCLUDED.utm_campaign,\n        lead_created_at = EXCLUDED.lead_created_at,\n        first_response_at = EXCLUDED.first_response_at,\n        mql_at = EXCLUDED.mql_at,\n        sql_at = EXCLUDED.sql_at,\n        source_updated_at = EXCLUDED.source_updated_at,\n        ingested_at = NOW()\n    RETURNING lead_id, source_updated_at\n),\nstats AS (\n    SELECT COUNT(*)::INTEGER AS rows_upserted\n    FROM upserted\n),\nlast_upserted AS (\n    SELECT lead_id, source_updated_at\n    FROM upserted\n    ORDER BY source_updated_at DESC, lead_id DESC\n    LIMIT 1\n)\nSELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n    $5::TEXT AS entity_key,\n    $3::TEXT AS start_watermark,\n    $4::TEXT AS start_primary_key,\n    $7::INTEGER AS rows_extracted,\n    s.rows_upserted,\n    lu.source_updated_at::text AS end_watermark,\n    lu.lead_id AS end_primary_key,\n    (\n        s.rows_upserted = $7::INTEGER\n        AND s.rows_upserted > 0\n        AND lu.source_updated_at = $8::TIMESTAMPTZ\n        AND lu.lead_id = $9::TEXT\n    ) AS upsert_verified,\n    'entity_raw_upsert_complete'::TEXT AS workflow_stage\nFROM stats s\nLEFT JOIN last_upserted lu ON TRUE;",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $json.run_id,\n  $json.entity_run_id,\n  $json.start_watermark,\n  $json.start_primary_key,\n  $json.entity_key,\n  JSON.stringify($json.changed_rows),\n  $json.rows_extracted,\n  $json.candidate_end_watermark,\n  $json.candidate_end_primary_key\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3584,
+        -1008
+      ],
+      "id": "3a304de3-9d7f-4c6f-ac41-330fc1dc9f3e",
+      "name": "ESYNC-039 | Upsert Leads Batch",
+      "credentials": {
+        "postgres": {
+          "id": "49PPUUns3Rf0L3VK",
+          "name": "LUMORA | Ingestion RW"
+        }
+      },
+      "notes": "COMPONENT ID\nESYNC-039\n\nNODE NAME\nESYNC-039 | Upsert Leads Batch\n\nNODE TYPE\nPostgres \u2014 Execute Query\n\nSTAGE\nStage 8G.6 \u2014 marketing.leads Raw Persistence\n\nPURPOSE\nIdempotently persists the exact changed marketing.leads batch into raw_marketing.leads.\n\nCREDENTIAL\nLUMORA | Ingestion RW\n\nTARGET\nlumora_revenue_simulation.raw_marketing.leads\n\nUPSERT CONTRACT\nFixed INSERT ... ON CONFLICT (lead_id) DO UPDATE.\nAll 15 source fields are persisted; ingested_at is warehouse-managed with NOW().\nThe node verifies rows_upserted equals rows_extracted and that the final persisted composite cursor exactly equals the source candidate cursor.\n\nSECURITY BOUNDARY\nNo source-system write. No reporting/control mutation outside the ingestion-authorized target. No runtime SQL identifiers.\n\nSUCCESS OUTPUT\nrows_upserted, end_watermark, end_primary_key, upsert_verified=true.\n\nFAILURE BEHAVIOR\nIf persistence cannot be proven, ESYNC-012 routes to ownership-safe failure finalization and the checkpoint cannot advance.\n\nNO AI\nNO ARBITRARY SQL\nNO DYNAMIC IDENTIFIERS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nPending Stage 8G.6 runtime verification."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "e4d332f3-ceb2-41e9-926c-2a31c8211308",
+              "leftValue": "={{ $json.entity_key === 'billing.invoices' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2464,
+        32
+      ],
+      "id": "dbff134b-0959-41d5-9a41-056cbd357f4e",
+      "name": "ESYNC-040 | Route Billing Invoices Source Entity",
+      "notes": "COMPONENT ID\nESYNC-040\n\nNODE NAME\nESYNC-040 | Route Billing Invoices Source Entity\n\nNODE TYPE\nIF\n\nSTAGE\nStage 8G.7 \u2014 Deterministic Entity Routing\n\nPURPOSE\nSeparates billing.invoices from the already verified CRM fallback after Marketing entities have been excluded.\n\nTRUE PATH\nbilling.invoices \u2192 ESYNC-041 | Extract Invoices Batch\n\nFALSE PATH\nContinue deterministic entity chain \u2192 ESYNC-044 | Route Billing Payments Source Entity\n\nFAIL-CLOSED ASSUMPTION\nOnly an entity whose exact checkpoint contract passed ESYNC-004 can reach this router.\n\nSECURITY BOUNDARY\nNo runtime schema/table selection. TRUE executes only fixed billing.invoices SELECT SQL using Source RO.\n\nNO AI\nNO SQL CONSTRUCTION\nNO DATABASE ACCESS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nRuntime verified through Stage 8G.7."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH changed AS (\n    SELECT\n        invoice_id,\n        account_id,\n        deal_id,\n        invoice_number,\n        invoice_date,\n        due_date,\n        currency,\n        invoice_amount,\n        paid_amount,\n        outstanding_amount,\n        invoice_status,\n        source_created_at,\n        source_updated_at\n    FROM billing.invoices\n    WHERE $5::TEXT = 'billing.invoices'\n      AND (\n          source_updated_at > $3::TIMESTAMPTZ\n          OR (\n              source_updated_at = $3::TIMESTAMPTZ\n              AND invoice_id > $4::TEXT\n          )\n      )\n    ORDER BY source_updated_at, invoice_id\n    LIMIT 100\n),\naggregated AS (\n    SELECT\n        COUNT(*)::INTEGER AS rows_extracted,\n        COALESCE(\n            jsonb_agg(\n                to_jsonb(i)\n                ORDER BY i.source_updated_at, i.invoice_id\n            ),\n            '[]'::JSONB\n        ) AS changed_rows\n    FROM changed i\n),\nlast_row AS (\n    SELECT source_updated_at, invoice_id\n    FROM changed\n    ORDER BY source_updated_at DESC, invoice_id DESC\n    LIMIT 1\n)\nSELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n    $5::TEXT AS entity_key,\n    $3::TEXT AS start_watermark,\n    $4::TEXT AS start_primary_key,\n    a.rows_extracted,\n    a.changed_rows,\n    lr.source_updated_at::text AS candidate_end_watermark,\n    lr.invoice_id AS candidate_end_primary_key,\n    (a.rows_extracted > 0) AS changes_found,\n    'entity_source_extraction_complete'::TEXT AS workflow_stage\nFROM aggregated a\nLEFT JOIN last_row lr ON TRUE;",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $json.run_id,\n  $json.entity_run_id,\n  $json.last_watermark,\n  $json.last_primary_key,\n  $json.entity_key\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2688,
+        -864
+      ],
+      "id": "b01ccac2-e246-4b75-a874-96c1f1dafe74",
+      "name": "ESYNC-041 | Extract Invoices Batch",
+      "credentials": {
+        "postgres": {
+          "id": "g17VKfn4L7IiJ4bk",
+          "name": "LUMORA | Source RO"
+        }
+      },
+      "notes": "COMPONENT ID\nESYNC-041\n\nNODE NAME\nESYNC-041 | Extract Invoices Batch\n\nNODE TYPE\nPostgres \u2014 Execute Query\n\nSTAGE\nStage 8G.7 \u2014 billing.invoices Incremental Extraction\n\nPURPOSE\nReads only billing.invoices rows newer than the committed composite cursor.\n\nCREDENTIAL\nLUMORA | Source RO\n\nDATABASE\nlumora_source_systems\n\nAUTHORIZED SOURCE\nbilling.invoices only\n\nCURSOR\n(source_updated_at, invoice_id)\n\nPREDICATE\nsource_updated_at > last_watermark\nOR source_updated_at = last_watermark AND invoice_id > last_primary_key\n\nORDER\nsource_updated_at ASC, invoice_id ASC\n\nBATCH LIMIT\n100\n\nOUTPUT CONTRACT\nStandard changed_rows JSONB array, rows_extracted, changes_found, and exact candidate ending cursor as PostgreSQL TEXT.\n\nSECURITY BOUNDARY\nSource table and columns are fixed in SQL. entity_key must equal billing.invoices. Source RO cannot write source data. No runtime identifier substitution is used.\n\nNO AI\nNO ARBITRARY SQL\nNO SOURCE WRITE\nNO TARGET ACCESS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nRuntime verified through Stage 8G.7."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "cf05bcbd-e722-4789-be38-cdde409d61d8",
+              "leftValue": "={{ $json.entity_key === 'billing.invoices' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3360,
+        -144
+      ],
+      "id": "d7a30763-8e96-4d16-9677-1127fd7847de",
+      "name": "ESYNC-042 | Route Billing Invoices Target Entity",
+      "notes": "COMPONENT ID\nESYNC-042\n\nNODE NAME\nESYNC-042 | Route Billing Invoices Target Entity\n\nNODE TYPE\nIF\n\nSTAGE\nStage 8G.7 \u2014 Deterministic Entity Routing\n\nPURPOSE\nSeparates billing.invoices from the verified CRM fallback on the changed-row target path.\n\nTRUE PATH\nbilling.invoices \u2192 ESYNC-043 | Upsert Invoices Batch\n\nFALSE PATH\nContinue deterministic entity chain \u2192 ESYNC-046 | Route Billing Payments Target Entity\n\nSECURITY BOUNDARY\nNo runtime-selected SQL identifiers. TRUE can write only through the fixed raw_billing.invoices upsert using Ingestion RW.\n\nNO AI\nNO SQL CONSTRUCTION\nNO DATABASE ACCESS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nRuntime verified through Stage 8G.7."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH payload AS (\n    SELECT *\n    FROM jsonb_populate_recordset(\n        NULL::raw_billing.invoices,\n        $6::JSONB\n    )\n),\nupserted AS (\n    INSERT INTO raw_billing.invoices (\n        invoice_id,\n        account_id,\n        deal_id,\n        invoice_number,\n        invoice_date,\n        due_date,\n        currency,\n        invoice_amount,\n        paid_amount,\n        outstanding_amount,\n        invoice_status,\n        source_created_at,\n        source_updated_at,\n        ingested_at\n    )\n    SELECT\n        invoice_id,\n        account_id,\n        deal_id,\n        invoice_number,\n        invoice_date,\n        due_date,\n        currency,\n        invoice_amount,\n        paid_amount,\n        outstanding_amount,\n        invoice_status,\n        source_created_at,\n        source_updated_at,\n        NOW()\n    FROM payload\n    ON CONFLICT (invoice_id)\n    DO UPDATE SET\n        account_id = EXCLUDED.account_id,\n        deal_id = EXCLUDED.deal_id,\n        invoice_number = EXCLUDED.invoice_number,\n        invoice_date = EXCLUDED.invoice_date,\n        due_date = EXCLUDED.due_date,\n        currency = EXCLUDED.currency,\n        invoice_amount = EXCLUDED.invoice_amount,\n        paid_amount = EXCLUDED.paid_amount,\n        outstanding_amount = EXCLUDED.outstanding_amount,\n        invoice_status = EXCLUDED.invoice_status,\n        source_created_at = EXCLUDED.source_created_at,\n        source_updated_at = EXCLUDED.source_updated_at,\n        ingested_at = NOW()\n    RETURNING invoice_id, source_updated_at\n),\nstats AS (\n    SELECT COUNT(*)::INTEGER AS rows_upserted\n    FROM upserted\n),\nlast_upserted AS (\n    SELECT invoice_id, source_updated_at\n    FROM upserted\n    ORDER BY source_updated_at DESC, invoice_id DESC\n    LIMIT 1\n)\nSELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n    $5::TEXT AS entity_key,\n    $3::TEXT AS start_watermark,\n    $4::TEXT AS start_primary_key,\n    $7::INTEGER AS rows_extracted,\n    s.rows_upserted,\n    lu.source_updated_at::text AS end_watermark,\n    lu.invoice_id AS end_primary_key,\n    (\n        s.rows_upserted = $7::INTEGER\n        AND s.rows_upserted > 0\n        AND lu.source_updated_at = $8::TIMESTAMPTZ\n        AND lu.invoice_id = $9::TEXT\n    ) AS upsert_verified,\n    'entity_raw_upsert_complete'::TEXT AS workflow_stage\nFROM stats s\nLEFT JOIN last_upserted lu ON TRUE;",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $json.run_id,\n  $json.entity_run_id,\n  $json.start_watermark,\n  $json.start_primary_key,\n  $json.entity_key,\n  JSON.stringify($json.changed_rows),\n  $json.rows_extracted,\n  $json.candidate_end_watermark,\n  $json.candidate_end_primary_key\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3808,
+        -1152
+      ],
+      "id": "5499f4a8-37e3-4bfe-a459-03f35f54b797",
+      "name": "ESYNC-043 | Upsert Invoices Batch",
+      "credentials": {
+        "postgres": {
+          "id": "49PPUUns3Rf0L3VK",
+          "name": "LUMORA | Ingestion RW"
+        }
+      },
+      "notes": "COMPONENT ID\nESYNC-043\n\nNODE NAME\nESYNC-043 | Upsert Invoices Batch\n\nNODE TYPE\nPostgres \u2014 Execute Query\n\nSTAGE\nStage 8G.7 \u2014 billing.invoices Raw Persistence\n\nPURPOSE\nIdempotently persists the exact changed billing.invoices batch into raw_billing.invoices.\n\nCREDENTIAL\nLUMORA | Ingestion RW\n\nTARGET\nlumora_revenue_simulation.raw_billing.invoices\n\nUPSERT CONTRACT\nFixed INSERT ... ON CONFLICT (invoice_id) DO UPDATE.\nAll 13 source fields are persisted; ingested_at is warehouse-managed with NOW().\n\nVERIFICATION CONTRACT\nupsert_verified = true only when rows_upserted = rows_extracted, at least one row is written, and the last persisted (source_updated_at, invoice_id) exactly matches the source candidate cursor.\n\nIDEMPOTENCY\nReplay cannot create duplicate invoices because invoice_id is the conflict key.\n\nSECURITY BOUNDARY\nNo source-system write. No reporting/governance mutation. No runtime target-table selection. Checkpoint advancement remains downstream and cannot occur unless this node proves the persistence contract.\n\nNO AI\nNO ARBITRARY SQL\nNO DYNAMIC IDENTIFIERS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nRuntime verified through Stage 8G.7."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "92a66253-542f-4ec5-92d2-57e6ddcb70e7",
+              "leftValue": "={{ $json.entity_key === 'billing.payments' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2688,
+        32
+      ],
+      "id": "e5346a29-6ad4-4994-a3cb-e36599e828d3",
+      "name": "ESYNC-044 | Route Billing Payments Source Entity",
+      "notes": "COMPONENT ID\nESYNC-044\n\nNODE NAME\nESYNC-044 | Route Billing Payments Source Entity\n\nNODE TYPE\nIF\n\nSTAGE\nStage 8G.8 \u2014 Deterministic Entity Routing\n\nPURPOSE\nRoutes the exact billing.payments entity to its fixed Source RO extraction branch after billing.invoices has been excluded.\n\nTRUE PATH\nbilling.payments \u2192 ESYNC-045 | Extract Payments Batch\n\nFALSE PATH\nContinues to the deterministic planning.sales_targets router in Stage 8G.9.\n\nSECURITY BOUNDARY\nNo runtime schema/table selection. TRUE executes only fixed billing.payments SELECT SQL using LUMORA | Source RO.\nUnknown/non-matching entity keys continue to the deterministic fallback chain and never receive payment-table access.\n\nNO AI\nNO SQL CONSTRUCTION\nNO DATABASE ACCESS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nRuntime verified through Stage 8G.8, including no-change, positive upsert, authoritative DB proof, and replay."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH changed AS (\n    SELECT\n        payment_id,\n        invoice_id,\n        account_id,\n        deal_id,\n        payment_date,\n        currency,\n        payment_amount,\n        payment_method,\n        payment_status,\n        source_created_at,\n        source_updated_at\n    FROM billing.payments\n    WHERE $5::TEXT = 'billing.payments'\n      AND (\n          source_updated_at > $3::TIMESTAMPTZ\n          OR (\n              source_updated_at = $3::TIMESTAMPTZ\n              AND payment_id > $4::TEXT\n          )\n      )\n    ORDER BY source_updated_at, payment_id\n    LIMIT 100\n),\naggregated AS (\n    SELECT\n        COUNT(*)::INTEGER AS rows_extracted,\n        COALESCE(\n            jsonb_agg(\n                to_jsonb(p)\n                ORDER BY p.source_updated_at, p.payment_id\n            ),\n            '[]'::JSONB\n        ) AS changed_rows\n    FROM changed p\n),\nlast_row AS (\n    SELECT source_updated_at, payment_id\n    FROM changed\n    ORDER BY source_updated_at DESC, payment_id DESC\n    LIMIT 1\n)\nSELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n    $5::TEXT AS entity_key,\n    $3::TEXT AS start_watermark,\n    $4::TEXT AS start_primary_key,\n    a.rows_extracted,\n    a.changed_rows,\n    lr.source_updated_at::text AS candidate_end_watermark,\n    lr.payment_id AS candidate_end_primary_key,\n    (a.rows_extracted > 0) AS changes_found,\n    'entity_source_extraction_complete'::TEXT AS workflow_stage\nFROM aggregated a\nLEFT JOIN last_row lr ON TRUE;",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $json.run_id,\n  $json.entity_run_id,\n  $json.last_watermark,\n  $json.last_primary_key,\n  $json.entity_key\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2912,
+        -864
+      ],
+      "id": "ca37c176-24f6-48c0-8668-abc47f55f02b",
+      "name": "ESYNC-045 | Extract Payments Batch",
+      "credentials": {
+        "postgres": {
+          "id": "g17VKfn4L7IiJ4bk",
+          "name": "LUMORA | Source RO"
+        }
+      },
+      "notes": "COMPONENT ID\nESYNC-045\n\nNODE NAME\nESYNC-045 | Extract Payments Batch\n\nNODE TYPE\nPostgres \u2014 Execute Query\n\nSTAGE\nStage 8G.8 \u2014 billing.payments Incremental Extraction\n\nPURPOSE\nReads only billing.payments rows newer than the committed composite cursor.\n\nCREDENTIAL\nLUMORA | Source RO\n\nAUTHORIZED SOURCE\nlumora_source_systems.billing.payments only\n\nCURSOR\n(source_updated_at, payment_id)\n\nEXTRACTION CONTRACT\n(source_updated_at, payment_id) > (last_watermark, last_primary_key)\nORDER BY source_updated_at, payment_id\nLIMIT 100\n\nOUTPUT CONTRACT\nStandard changed_rows JSONB array, rows_extracted, changes_found, and exact candidate ending cursor as PostgreSQL TEXT.\n\nSECURITY BOUNDARY\nFixed table/columns in SQL. Source RO cannot write source data. No runtime identifier substitution.\n\nNO AI\nNO ARBITRARY SQL\nNO SOURCE WRITE\nNO TARGET ACCESS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nRuntime verified through Stage 8G.8."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "1d33ff84-6ae2-473d-8143-840b5aa3f5fa",
+              "leftValue": "={{ $json.entity_key === 'billing.payments' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3584,
+        -144
+      ],
+      "id": "a7a322df-c848-4369-967d-87e14b1969d5",
+      "name": "ESYNC-046 | Route Billing Payments Target Entity",
+      "notes": "COMPONENT ID\nESYNC-046\n\nNODE NAME\nESYNC-046 | Route Billing Payments Target Entity\n\nNODE TYPE\nIF\n\nSTAGE\nStage 8G.8 \u2014 Deterministic Entity Routing\n\nPURPOSE\nRoutes the exact billing.payments changed-row batch to its fixed raw_billing.payments upsert branch.\n\nTRUE PATH\nbilling.payments \u2192 ESYNC-047 | Upsert Payments Batch\n\nFALSE PATH\nContinues to the deterministic planning.sales_targets target router in Stage 8G.9.\n\nSECURITY BOUNDARY\nNo runtime-selected SQL identifiers. TRUE can write only through the fixed raw_billing.payments upsert using LUMORA | Ingestion RW.\nUnknown/non-matching entity keys continue to the deterministic fallback chain and never receive payment-table access.\n\nNO AI\nNO SQL CONSTRUCTION\nNO DATABASE ACCESS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nRuntime verified through Stage 8G.8."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH payload AS (\n    SELECT *\n    FROM jsonb_populate_recordset(\n        NULL::raw_billing.payments,\n        $6::JSONB\n    )\n),\nupserted AS (\n    INSERT INTO raw_billing.payments (\n        payment_id,\n        invoice_id,\n        account_id,\n        deal_id,\n        payment_date,\n        currency,\n        payment_amount,\n        payment_method,\n        payment_status,\n        source_created_at,\n        source_updated_at,\n        ingested_at\n    )\n    SELECT\n        payment_id,\n        invoice_id,\n        account_id,\n        deal_id,\n        payment_date,\n        currency,\n        payment_amount,\n        payment_method,\n        payment_status,\n        source_created_at,\n        source_updated_at,\n        clock_timestamp()\n    FROM payload\n    ON CONFLICT (payment_id)\n    DO UPDATE SET\n        invoice_id = EXCLUDED.invoice_id,\n        account_id = EXCLUDED.account_id,\n        deal_id = EXCLUDED.deal_id,\n        payment_date = EXCLUDED.payment_date,\n        currency = EXCLUDED.currency,\n        payment_amount = EXCLUDED.payment_amount,\n        payment_method = EXCLUDED.payment_method,\n        payment_status = EXCLUDED.payment_status,\n        source_created_at = EXCLUDED.source_created_at,\n        source_updated_at = EXCLUDED.source_updated_at,\n        ingested_at = clock_timestamp()\n    RETURNING payment_id, source_updated_at\n),\nstats AS (\n    SELECT COUNT(*)::INTEGER AS rows_upserted\n    FROM upserted\n),\nlast_upserted AS (\n    SELECT payment_id, source_updated_at\n    FROM upserted\n    ORDER BY source_updated_at DESC, payment_id DESC\n    LIMIT 1\n)\nSELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n    $5::TEXT AS entity_key,\n    $3::TEXT AS start_watermark,\n    $4::TEXT AS start_primary_key,\n    $7::INTEGER AS rows_extracted,\n    s.rows_upserted,\n    lu.source_updated_at::text AS end_watermark,\n    lu.payment_id AS end_primary_key,\n    (\n        s.rows_upserted = $7::INTEGER\n        AND s.rows_upserted > 0\n        AND lu.source_updated_at = $8::TIMESTAMPTZ\n        AND lu.payment_id = $9::TEXT\n    ) AS upsert_verified,\n    'entity_raw_upsert_complete'::TEXT AS workflow_stage\nFROM stats s\nLEFT JOIN last_upserted lu ON TRUE;",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $json.run_id,\n  $json.entity_run_id,\n  $json.start_watermark,\n  $json.start_primary_key,\n  $json.entity_key,\n  JSON.stringify($json.changed_rows),\n  $json.rows_extracted,\n  $json.candidate_end_watermark,\n  $json.candidate_end_primary_key\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        4032,
+        -1152
+      ],
+      "id": "d0a1b084-90d4-4c64-be63-ad5cf43dd25f",
+      "name": "ESYNC-047 | Upsert Payments Batch",
+      "credentials": {
+        "postgres": {
+          "id": "49PPUUns3Rf0L3VK",
+          "name": "LUMORA | Ingestion RW"
+        }
+      },
+      "notes": "COMPONENT ID\nESYNC-047\n\nNODE NAME\nESYNC-047 | Upsert Payments Batch\n\nNODE TYPE\nPostgres \u2014 Execute Query\n\nSTAGE\nStage 8G.8 \u2014 billing.payments Raw Persistence\n\nPURPOSE\nIdempotently persists the exact changed billing.payments batch into raw_billing.payments.\n\nCREDENTIAL\nLUMORA | Ingestion RW\n\nTARGET\nlumora_revenue_simulation.raw_billing.payments\n\nUPSERT CONTRACT\nFixed INSERT ... ON CONFLICT (payment_id) DO UPDATE. Source columns are explicitly listed; ingested_at is warehouse-managed with clock_timestamp().\n\nVERIFICATION CONTRACT\nupsert_verified = true only when rows_upserted = rows_extracted, at least one row is written, and the last persisted (source_updated_at, payment_id) exactly matches the source candidate cursor.\n\nIDEMPOTENCY\nReplay cannot create duplicate payments because payment_id is the conflict key.\n\nSECURITY BOUNDARY\nNo source-system write. No reporting/governance mutation. No runtime target-table selection. Checkpoint advancement remains downstream and cannot occur unless persistence is verified.\n\nNO AI\nNO ARBITRARY SQL\nNO DYNAMIC IDENTIFIERS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nRuntime verified through Stage 8G.8."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "e87ae517-be77-49bf-a5e9-4440fdd3c3a3",
+              "leftValue": "={{ $json.entity_key === 'planning.sales_targets' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2912,
+        32
+      ],
+      "id": "1a139982-c8e5-42c7-9ec4-aaf1da7a3f10",
+      "name": "ESYNC-048 | Route Sales Targets Source Entity",
+      "notes": "COMPONENT ID\nESYNC-048\n\nNODE NAME\nESYNC-048 | Route Sales Targets Source Entity\n\nNODE TYPE\nIF\n\nSTAGE\nStage 8G.9 \u2014 Deterministic Entity Routing\n\nPURPOSE\nRoutes the final allowlisted planning.sales_targets entity to its fixed Source RO extraction branch.\n\nTRUE PATH\nplanning.sales_targets \u2192 ESYNC-049 | Extract Sales Targets Batch\n\nFALSE PATH\nContinues to the previously verified CRM fallback chain; unknown contracts already fail closed at ESYNC-004.\n\nSECURITY BOUNDARY\nNo runtime schema/table selection. TRUE executes only fixed planning.sales_targets SELECT SQL using LUMORA | Source RO.\nUnknown/non-matching entity keys never receive planning-table access.\n\nNO AI\nNO SQL CONSTRUCTION\nNO DATABASE ACCESS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nPending Stage 8G.9 runtime verification."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH changed AS (\n    SELECT\n        target_id,\n        rep_id,\n        target_month,\n        team,\n        revenue_target,\n        pipeline_target,\n        source_created_at,\n        source_updated_at\n    FROM planning.sales_targets\n    WHERE $5::TEXT = 'planning.sales_targets'\n      AND (\n          source_updated_at > $3::TIMESTAMPTZ\n          OR (\n              source_updated_at = $3::TIMESTAMPTZ\n              AND target_id > $4::TEXT\n          )\n      )\n    ORDER BY source_updated_at, target_id\n    LIMIT 100\n),\naggregated AS (\n    SELECT\n        COUNT(*)::INTEGER AS rows_extracted,\n        COALESCE(\n            jsonb_agg(\n                to_jsonb(t)\n                ORDER BY t.source_updated_at, t.target_id\n            ),\n            '[]'::JSONB\n        ) AS changed_rows\n    FROM changed t\n),\nlast_row AS (\n    SELECT source_updated_at, target_id\n    FROM changed\n    ORDER BY source_updated_at DESC, target_id DESC\n    LIMIT 1\n)\nSELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n    $5::TEXT AS entity_key,\n    $3::TEXT AS start_watermark,\n    $4::TEXT AS start_primary_key,\n    a.rows_extracted,\n    a.changed_rows,\n    lr.source_updated_at::text AS candidate_end_watermark,\n    lr.target_id AS candidate_end_primary_key,\n    (a.rows_extracted > 0) AS changes_found,\n    'entity_source_extraction_complete'::TEXT AS workflow_stage\nFROM aggregated a\nLEFT JOIN last_row lr ON TRUE;",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $json.run_id,\n  $json.entity_run_id,\n  $json.last_watermark,\n  $json.last_primary_key,\n  $json.entity_key\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3136,
+        -864
+      ],
+      "id": "d43764c9-963f-45ad-88da-cce2d481670a",
+      "name": "ESYNC-049 | Extract Sales Targets Batch",
+      "credentials": {
+        "postgres": {
+          "id": "g17VKfn4L7IiJ4bk",
+          "name": "LUMORA | Source RO"
+        }
+      },
+      "notes": "COMPONENT ID\nESYNC-049\n\nNODE NAME\nESYNC-049 | Extract Sales Targets Batch\n\nNODE TYPE\nPostgres \u2014 Execute Query\n\nSTAGE\nStage 8G.9 \u2014 planning.sales_targets Incremental Extraction\n\nPURPOSE\nReads only planning.sales_targets rows newer than the committed composite cursor.\n\nCREDENTIAL\nLUMORA | Source RO\n\nDATABASE\nlumora_source_systems\n\nAUTHORIZED SOURCE\nplanning.sales_targets only\n\nCURSOR\n(source_updated_at, target_id)\n\nEXTRACTION CONTRACT\n(source_updated_at, target_id) > (last_watermark, last_primary_key)\nORDER BY source_updated_at, target_id\nLIMIT 100\n\nOUTPUT CONTRACT\nStandard changed_rows JSONB array, rows_extracted, changes_found, and exact candidate ending cursor as PostgreSQL TEXT.\n\nSECURITY BOUNDARY\nSource table and columns are fixed in SQL. entity_key must equal planning.sales_targets. Source RO cannot write source data. No runtime identifier substitution.\n\nNO AI\nNO ARBITRARY SQL\nNO SOURCE WRITE\nNO TARGET ACCESS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nPending Stage 8G.9 runtime verification."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "616e35ce-5955-4d2b-a1b5-ddfdb8d33e26",
+              "leftValue": "={{ $json.entity_key === 'planning.sales_targets' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3808,
+        -144
+      ],
+      "id": "92ee153b-392e-4d57-9316-5d7c6f976d3b",
+      "name": "ESYNC-050 | Route Sales Targets Target Entity",
+      "notes": "COMPONENT ID\nESYNC-050\n\nNODE NAME\nESYNC-050 | Route Sales Targets Target Entity\n\nNODE TYPE\nIF\n\nSTAGE\nStage 8G.9 \u2014 Deterministic Entity Routing\n\nPURPOSE\nRoutes the final planning.sales_targets changed-row batch to its fixed raw_planning.sales_targets upsert branch.\n\nTRUE PATH\nplanning.sales_targets \u2192 ESYNC-051 | Upsert Sales Targets Batch\n\nFALSE PATH\nContinues to the existing verified CRM target fallback chain; unknown contracts already fail closed at ESYNC-004.\n\nSECURITY BOUNDARY\nNo runtime-selected SQL identifiers. TRUE can write only through the fixed raw_planning.sales_targets upsert using LUMORA | Ingestion RW.\n\nNO AI\nNO SQL CONSTRUCTION\nNO DATABASE ACCESS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nPending Stage 8G.9 runtime verification."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH payload AS (\n    SELECT *\n    FROM jsonb_populate_recordset(\n        NULL::raw_planning.sales_targets,\n        $6::JSONB\n    )\n),\nupserted AS (\n    INSERT INTO raw_planning.sales_targets (\n        target_id,\n        rep_id,\n        target_month,\n        team,\n        revenue_target,\n        pipeline_target,\n        source_created_at,\n        source_updated_at,\n        ingested_at\n    )\n    SELECT\n        target_id,\n        rep_id,\n        target_month,\n        team,\n        revenue_target,\n        pipeline_target,\n        source_created_at,\n        source_updated_at,\n        clock_timestamp()\n    FROM payload\n    ON CONFLICT (target_id)\n    DO UPDATE SET\n        rep_id = EXCLUDED.rep_id,\n        target_month = EXCLUDED.target_month,\n        team = EXCLUDED.team,\n        revenue_target = EXCLUDED.revenue_target,\n        pipeline_target = EXCLUDED.pipeline_target,\n        source_created_at = EXCLUDED.source_created_at,\n        source_updated_at = EXCLUDED.source_updated_at,\n        ingested_at = clock_timestamp()\n    RETURNING target_id, source_updated_at\n),\nstats AS (\n    SELECT COUNT(*)::INTEGER AS rows_upserted\n    FROM upserted\n),\nlast_upserted AS (\n    SELECT target_id, source_updated_at\n    FROM upserted\n    ORDER BY source_updated_at DESC, target_id DESC\n    LIMIT 1\n)\nSELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n    $5::TEXT AS entity_key,\n    $3::TEXT AS start_watermark,\n    $4::TEXT AS start_primary_key,\n    $7::INTEGER AS rows_extracted,\n    s.rows_upserted,\n    lu.source_updated_at::text AS end_watermark,\n    lu.target_id AS end_primary_key,\n    (\n        s.rows_upserted = $7::INTEGER\n        AND s.rows_upserted > 0\n        AND lu.source_updated_at = $8::TIMESTAMPTZ\n        AND lu.target_id = $9::TEXT\n    ) AS upsert_verified,\n    'entity_raw_upsert_complete'::TEXT AS workflow_stage\nFROM stats s\nLEFT JOIN last_upserted lu ON TRUE;",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $json.run_id,\n  $json.entity_run_id,\n  $json.start_watermark,\n  $json.start_primary_key,\n  $json.entity_key,\n  JSON.stringify($json.changed_rows),\n  $json.rows_extracted,\n  $json.candidate_end_watermark,\n  $json.candidate_end_primary_key\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        4256,
+        -1152
+      ],
+      "id": "545971bc-9be7-45ef-aadf-d56f881b8228",
+      "name": "ESYNC-051 | Upsert Sales Targets Batch",
+      "credentials": {
+        "postgres": {
+          "id": "49PPUUns3Rf0L3VK",
+          "name": "LUMORA | Ingestion RW"
+        }
+      },
+      "notes": "COMPONENT ID\nESYNC-051\n\nNODE NAME\nESYNC-051 | Upsert Sales Targets Batch\n\nNODE TYPE\nPostgres \u2014 Execute Query\n\nSTAGE\nStage 8G.9 \u2014 planning.sales_targets Raw Persistence\n\nPURPOSE\nIdempotently persists the exact changed planning.sales_targets batch into raw_planning.sales_targets.\n\nCREDENTIAL\nLUMORA | Ingestion RW\n\nTARGET\nlumora_revenue_simulation.raw_planning.sales_targets\n\nUPSERT CONTRACT\nFixed INSERT ... ON CONFLICT (target_id) DO UPDATE. All 8 source fields are explicitly persisted; ingested_at is warehouse-managed with clock_timestamp().\n\nVERIFICATION CONTRACT\nupsert_verified = true only when rows_upserted = rows_extracted, at least one row is written, and the last persisted (source_updated_at, target_id) exactly matches the source candidate cursor.\n\nIDEMPOTENCY\nReplay cannot create duplicate targets because target_id is the conflict key.\n\nSECURITY BOUNDARY\nNo source-system write. No reporting/governance mutation. No runtime target-table selection. Checkpoint advancement remains downstream and cannot occur unless persistence is verified.\n\nNO AI\nNO ARBITRARY SQL\nNO DYNAMIC IDENTIFIERS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nPending Stage 8G.9 runtime verification."
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "entity_key",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        -192
+      ],
+      "id": "1a160f98-b9d7-483f-932d-1bde431b7ec3",
+      "name": "ESYNC-000 | Execute Workflow Trigger",
+      "notes": "COMPONENT ID\nESYNC-000\n\nNODE NAME\nESYNC-000 | Execute Workflow Trigger\n\nNODE TYPE\nExecute Workflow Trigger\n\nSTAGE\nStage 8H \u2014 Production Multi-Entity Orchestration\n\nPURPOSE\nAllows the verified reusable entity-sync worker to be called by a same-owner parent workflow with one typed entity_key input.\n\nAUTHORIZED INPUT\nentity_key \u2014 string only. The downstream deterministic allowlist in ESYNC-004 remains the authority for whether an entity may run.\n\nSECURITY BOUNDARY\nNo database access. No credential access. No AI. No SQL. No dynamic schema/table selection. The trigger cannot bypass the checkpoint gate, fixed source routing, fixed target routing, or database permissions.\n\nFAILURE BEHAVIOR\nMissing or non-allowlisted values fail closed downstream through the existing checkpoint/allowlist controls.\n\nNO AI\nNO SQL EXECUTION\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nBuild complete; callable-trigger runtime verification pending parent-orchestrator test."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "f4387004-c86d-4421-b1ce-1c517dec4edd",
+              "leftValue": "={{ $json.entity_key === 'crm.deals' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3136,
+        32
+      ],
+      "id": "234bd039-f8b0-4c6e-9800-44f91a520667",
+      "name": "ESYNC-052 | Route Deals Source Entity",
+      "notes": "COMPONENT ID\nESYNC-052\n\nNODE NAME\nESYNC-052 | Route Deals Source Entity\n\nNODE TYPE\nIF\n\nSTAGE\nStage 8H \u2014 Production Callable Worker\n\nPURPOSE\nRoutes only the fixed allowlisted crm.deals entity to its verified fixed SQL branch.\n\nTRUE CONDITION\nentity_key = crm.deals\n\nFALSE PATH\nContinues to the existing deterministic fallback chain.\n\nSECURITY BOUNDARY\nNo database access. No AI. No dynamic schema/table identifiers. Unknown keys cannot gain deal-table access.\n\nNO AI\nNO SQL EXECUTION\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nCopied from the previously verified crm.deals security contract; runtime verification inside the production callable worker pending."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH changed AS (\n    SELECT\n        deal_id,\n        account_id,\n        primary_contact_id,\n        owner_rep_id,\n        deal_name,\n        product_tier,\n        stage,\n        outcome,\n        amount,\n        probability,\n        currency,\n        lead_source,\n        created_at,\n        qualified_at,\n        opportunity_at,\n        proposal_sent_at,\n        expected_close_date,\n        closed_at,\n        last_activity_at,\n        next_activity_at,\n        first_response_at,\n        sla_due_at,\n        lost_reason,\n        source_updated_at\n    FROM crm.deals\n    WHERE $5::TEXT = 'crm.deals'\n      AND (\n          source_updated_at > $3::TIMESTAMPTZ\n          OR (\n              source_updated_at = $3::TIMESTAMPTZ\n              AND deal_id > $4::TEXT\n          )\n      )\n    ORDER BY source_updated_at, deal_id\n    LIMIT 100\n),\naggregated AS (\n    SELECT\n        COUNT(*)::INTEGER AS rows_extracted,\n        COALESCE(\n            jsonb_agg(\n                to_jsonb(t)\n                ORDER BY t.source_updated_at, t.deal_id\n            ),\n            '[]'::JSONB\n        ) AS changed_rows\n    FROM changed t\n),\nlast_row AS (\n    SELECT source_updated_at, deal_id\n    FROM changed\n    ORDER BY source_updated_at DESC, deal_id DESC\n    LIMIT 1\n)\nSELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n    $5::TEXT AS entity_key,\n    $3::TEXT AS start_watermark,\n    $4::TEXT AS start_primary_key,\n    a.rows_extracted,\n    a.changed_rows,\n    lr.source_updated_at::text AS candidate_end_watermark,\n    lr.deal_id AS candidate_end_primary_key,\n    (a.rows_extracted > 0) AS changes_found,\n    'entity_source_extraction_complete'::TEXT AS workflow_stage\nFROM aggregated a\nLEFT JOIN last_row lr ON TRUE;",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $json.run_id,\n  $json.entity_run_id,\n  $json.last_watermark,\n  $json.last_primary_key,\n  $json.entity_key\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        3360,
+        -864
+      ],
+      "id": "eff861b3-be25-4b9d-8cad-fabe2e538a08",
+      "name": "ESYNC-053 | Extract Deals Batch",
+      "credentials": {
+        "postgres": {
+          "id": "g17VKfn4L7IiJ4bk",
+          "name": "LUMORA | Source RO"
+        }
+      },
+      "notes": "COMPONENT ID\nESYNC-053\n\nNODE NAME\nESYNC-053 | Extract Deals Batch\n\nNODE TYPE\nPostgres \u2014 Execute Query\n\nSTAGE\nStage 8H \u2014 Production Callable Worker\n\nPURPOSE\nCopies the already verified crm.deals incremental extraction contract into the generalized callable worker.\n\nDATABASE CREDENTIAL\nLUMORA | Source RO\n\nFIXED SOURCE\nlumora_source_systems.crm.deals\n\nCOMPOSITE CURSOR\n(source_updated_at, deal_id)\n\nEXTRACTION CONTRACT\n(source_updated_at, deal_id) > (last_watermark, last_primary_key), ordered by the same fields, limit 100.\n\nOUTPUT CONTRACT\nUses generic changed_rows plus candidate_end_watermark / candidate_end_primary_key so it can reuse the shared verification and checkpoint path.\n\nSECURITY BOUNDARY\nRead-only source credential. Fixed SQL and fixed table. No runtime identifier selection.\n\nNO AI\nNO SOURCE WRITE\nNO ARBITRARY SQL\nNO DYNAMIC IDENTIFIERS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nUnderlying crm.deals extraction contract previously verified; callable-worker copy pending parent runtime verification."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "00386a3f-e65a-4915-abc2-49cb417c087d",
+              "leftValue": "={{ $json.entity_key === 'crm.deals' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        4032,
+        -144
+      ],
+      "id": "2c18868e-77fe-4ce8-8eb7-26471fd70da4",
+      "name": "ESYNC-054 | Route Deals Target Entity",
+      "notes": "COMPONENT ID\nESYNC-054\n\nNODE NAME\nESYNC-054 | Route Deals Target Entity\n\nNODE TYPE\nIF\n\nSTAGE\nStage 8H \u2014 Production Callable Worker\n\nPURPOSE\nRoutes only the fixed allowlisted crm.deals entity to its verified fixed SQL branch.\n\nTRUE CONDITION\nentity_key = crm.deals\n\nFALSE PATH\nContinues to the existing deterministic fallback chain.\n\nSECURITY BOUNDARY\nNo database access. No AI. No dynamic schema/table identifiers. Unknown keys cannot gain deal-table access.\n\nNO AI\nNO SQL EXECUTION\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nCopied from the previously verified crm.deals security contract; runtime verification inside the production callable worker pending."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH payload AS (\n    SELECT *\n    FROM jsonb_populate_recordset(\n        NULL::raw_crm.deals,\n        $6::JSONB\n    )\n),\nupserted AS (\n    INSERT INTO raw_crm.deals (\n        deal_id,\n        account_id,\n        primary_contact_id,\n        owner_rep_id,\n        deal_name,\n        product_tier,\n        stage,\n        outcome,\n        amount,\n        probability,\n        currency,\n        lead_source,\n        created_at,\n        qualified_at,\n        opportunity_at,\n        proposal_sent_at,\n        expected_close_date,\n        closed_at,\n        last_activity_at,\n        next_activity_at,\n        first_response_at,\n        sla_due_at,\n        lost_reason,\n        source_updated_at,\n        ingested_at\n    )\n    SELECT\n        deal_id,\n        account_id,\n        primary_contact_id,\n        owner_rep_id,\n        deal_name,\n        product_tier,\n        stage,\n        outcome,\n        amount,\n        probability,\n        currency,\n        lead_source,\n        created_at,\n        qualified_at,\n        opportunity_at,\n        proposal_sent_at,\n        expected_close_date,\n        closed_at,\n        last_activity_at,\n        next_activity_at,\n        first_response_at,\n        sla_due_at,\n        lost_reason,\n        source_updated_at,\n        clock_timestamp()\n    FROM payload\n    ON CONFLICT (deal_id)\n    DO UPDATE SET\n        account_id = EXCLUDED.account_id,\n        primary_contact_id = EXCLUDED.primary_contact_id,\n        owner_rep_id = EXCLUDED.owner_rep_id,\n        deal_name = EXCLUDED.deal_name,\n        product_tier = EXCLUDED.product_tier,\n        stage = EXCLUDED.stage,\n        outcome = EXCLUDED.outcome,\n        amount = EXCLUDED.amount,\n        probability = EXCLUDED.probability,\n        currency = EXCLUDED.currency,\n        lead_source = EXCLUDED.lead_source,\n        created_at = EXCLUDED.created_at,\n        qualified_at = EXCLUDED.qualified_at,\n        opportunity_at = EXCLUDED.opportunity_at,\n        proposal_sent_at = EXCLUDED.proposal_sent_at,\n        expected_close_date = EXCLUDED.expected_close_date,\n        closed_at = EXCLUDED.closed_at,\n        last_activity_at = EXCLUDED.last_activity_at,\n        next_activity_at = EXCLUDED.next_activity_at,\n        first_response_at = EXCLUDED.first_response_at,\n        sla_due_at = EXCLUDED.sla_due_at,\n        lost_reason = EXCLUDED.lost_reason,\n        source_updated_at = EXCLUDED.source_updated_at,\n        ingested_at = clock_timestamp()\n    RETURNING deal_id, source_updated_at\n),\nstats AS (\n    SELECT COUNT(*)::INTEGER AS rows_upserted\n    FROM upserted\n),\nlast_upserted AS (\n    SELECT deal_id, source_updated_at\n    FROM upserted\n    ORDER BY source_updated_at DESC, deal_id DESC\n    LIMIT 1\n)\nSELECT\n    $1::BIGINT AS run_id,\n    $2::BIGINT AS entity_run_id,\n    $5::TEXT AS entity_key,\n    $3::TEXT AS start_watermark,\n    $4::TEXT AS start_primary_key,\n    $7::INTEGER AS rows_extracted,\n    s.rows_upserted,\n    lu.source_updated_at::text AS end_watermark,\n    lu.deal_id AS end_primary_key,\n    (\n        s.rows_upserted = $7::INTEGER\n        AND s.rows_upserted > 0\n        AND lu.source_updated_at = $8::TIMESTAMPTZ\n        AND lu.deal_id = $9::TEXT\n    ) AS upsert_verified,\n    'entity_raw_upsert_complete'::TEXT AS workflow_stage\nFROM stats s\nLEFT JOIN last_upserted lu ON TRUE;",
+        "options": {
+          "queryReplacement": "=={{\n[\n  $json.run_id,\n  $json.entity_run_id,\n  $json.start_watermark,\n  $json.start_primary_key,\n  $json.entity_key,\n  JSON.stringify($json.changed_rows),\n  $json.rows_extracted,\n  $json.candidate_end_watermark,\n  $json.candidate_end_primary_key\n]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        4480,
+        -1152
+      ],
+      "id": "e417da79-e763-4776-9d2e-b655744f9a2c",
+      "name": "ESYNC-055 | Upsert Deals Batch",
+      "credentials": {
+        "postgres": {
+          "id": "49PPUUns3Rf0L3VK",
+          "name": "LUMORA | Ingestion RW"
+        }
+      },
+      "notes": "COMPONENT ID\nESYNC-055\n\nNODE NAME\nESYNC-055 | Upsert Deals Batch\n\nNODE TYPE\nPostgres \u2014 Execute Query\n\nSTAGE\nStage 8H \u2014 Production Callable Worker\n\nPURPOSE\nCopies the already verified idempotent crm.deals raw upsert contract into the generalized callable worker.\n\nDATABASE CREDENTIAL\nLUMORA | Ingestion RW\n\nFIXED TARGET\nraw_crm.deals\n\nIDEMPOTENCY\nON CONFLICT (deal_id) DO UPDATE.\n\nVERIFICATION CONTRACT\nrows_upserted must equal rows_extracted and the ending composite cursor must exactly equal the source candidate cursor before the shared checkpoint advancement path is allowed.\n\nSECURITY BOUNDARY\nNo source credential. Fixed SQL and target table. No reporting/governance mutation. No dynamic identifiers.\n\nNO AI\nNO ARBITRARY SQL\nNO DYNAMIC IDENTIFIERS\nNO SECRET IN NOTES\n\nVERIFICATION STATUS\nUnderlying crm.deals upsert/checkpoint contract previously verified; callable-worker copy pending parent runtime verification."
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "ESYNC-001 | Manual Entity Sync Test": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-002 | Configure Test Entity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-002 | Configure Test Entity": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-003 | Start Entity Sync Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-003 | Start Entity Sync Run": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-004 | Load Entity Checkpoint",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-004 | Load Entity Checkpoint": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-005 | Checkpoint Ready?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-005 | Checkpoint Ready?": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-006 | Claim Entity Checkpoint",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "ESYNC-015 | Finalize Checkpoint Gate Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-006 | Claim Entity Checkpoint": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-007 | Checkpoint Claimed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-007 | Checkpoint Claimed?": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-019 | Route Source Entity",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "ESYNC-016 | Finalize Claim Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-008 | Extract Sales Reps Batch": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-009 | Changes Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-009 | Changes Found?": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-022 | Route Target Entity",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "ESYNC-010 | Complete No-Change Entity Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-015 | Finalize Checkpoint Gate Failure": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-ERR-01 | Stop Checkpoint Gate Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-016 | Finalize Claim Failure": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-ERR-02 | Stop Checkpoint Claim Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-011 | Upsert Sales Reps Batch": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-012 | Upsert Verified?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-012 | Upsert Verified?": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-013 | Advance Entity Checkpoint",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "ESYNC-017 | Finalize Owned Entity Sync Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-013 | Advance Entity Checkpoint": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-014 | Commit Verified?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-014 | Commit Verified?": {
+      "main": [
+        [],
+        [
+          {
+            "node": "ESYNC-018 | Reconcile Unverified Entity Commit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-017 | Finalize Owned Entity Sync Failure": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-ERR-03 | Stop Unverified Upsert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-018 | Reconcile Unverified Entity Commit": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-ERR-04 | Stop Unverified Entity Commit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-019 | Route Source Entity": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-008 | Extract Sales Reps Batch",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "ESYNC-024 | Route Remaining Source Entity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-020 | Extract Accounts Batch": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-009 | Changes Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-022 | Route Target Entity": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-011 | Upsert Sales Reps Batch",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "ESYNC-026 | Route Remaining Target Entity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-023 | Upsert Accounts Batch": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-012 | Upsert Verified?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-024 | Route Remaining Source Entity": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-020 | Extract Accounts Batch",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "ESYNC-032 | Route Marketing Source Entity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-025 | Extract Contacts Batch": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-009 | Changes Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-026 | Route Remaining Target Entity": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-023 | Upsert Accounts Batch",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "ESYNC-034 | Route Marketing Target Entity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-027 | Upsert Contacts Batch": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-012 | Upsert Verified?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-028 | Route Final CRM Source Entity": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-025 | Extract Contacts Batch",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "ESYNC-029 | Extract Activities Batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-029 | Extract Activities Batch": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-009 | Changes Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-030 | Route Final CRM Target Entity": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-027 | Upsert Contacts Batch",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "ESYNC-031 | Upsert Activities Batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-031 | Upsert Activities Batch": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-012 | Upsert Verified?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-032 | Route Marketing Source Entity": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-033 | Extract Campaigns Batch",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "ESYNC-036 | Route Marketing Leads Source Entity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-033 | Extract Campaigns Batch": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-009 | Changes Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-034 | Route Marketing Target Entity": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-035 | Upsert Campaigns Batch",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "ESYNC-038 | Route Marketing Leads Target Entity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-035 | Upsert Campaigns Batch": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-012 | Upsert Verified?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-036 | Route Marketing Leads Source Entity": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-037 | Extract Leads Batch",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "ESYNC-040 | Route Billing Invoices Source Entity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-037 | Extract Leads Batch": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-009 | Changes Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-038 | Route Marketing Leads Target Entity": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-039 | Upsert Leads Batch",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "ESYNC-042 | Route Billing Invoices Target Entity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-039 | Upsert Leads Batch": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-012 | Upsert Verified?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-040 | Route Billing Invoices Source Entity": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-041 | Extract Invoices Batch",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "ESYNC-044 | Route Billing Payments Source Entity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-041 | Extract Invoices Batch": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-009 | Changes Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-042 | Route Billing Invoices Target Entity": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-043 | Upsert Invoices Batch",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "ESYNC-046 | Route Billing Payments Target Entity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-043 | Upsert Invoices Batch": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-012 | Upsert Verified?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-044 | Route Billing Payments Source Entity": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-045 | Extract Payments Batch",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "ESYNC-048 | Route Sales Targets Source Entity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-045 | Extract Payments Batch": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-009 | Changes Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-048 | Route Sales Targets Source Entity": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-049 | Extract Sales Targets Batch",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "ESYNC-052 | Route Deals Source Entity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-049 | Extract Sales Targets Batch": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-009 | Changes Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-046 | Route Billing Payments Target Entity": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-047 | Upsert Payments Batch",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "ESYNC-050 | Route Sales Targets Target Entity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-047 | Upsert Payments Batch": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-012 | Upsert Verified?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-050 | Route Sales Targets Target Entity": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-051 | Upsert Sales Targets Batch",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "ESYNC-054 | Route Deals Target Entity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-051 | Upsert Sales Targets Batch": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-012 | Upsert Verified?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-000 | Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-003 | Start Entity Sync Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-052 | Route Deals Source Entity": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-053 | Extract Deals Batch",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "ESYNC-028 | Route Final CRM Source Entity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-053 | Extract Deals Batch": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-009 | Changes Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-054 | Route Deals Target Entity": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-055 | Upsert Deals Batch",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "ESYNC-030 | Route Final CRM Target Entity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESYNC-055 | Upsert Deals Batch": {
+      "main": [
+        [
+          {
+            "node": "ESYNC-012 | Upsert Verified?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "mdedOsqws1SGmXxa",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "tags": []
+}
