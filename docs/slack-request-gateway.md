@@ -8,13 +8,15 @@ The gateway does not implement reporting logic itself. It converts a trusted Sla
 
 ```text
 Slack app mention
-  -> Normalize Slack request
+  -> trusted channel enforcement
+  -> normalize Slack request
   -> LUMORA-REVINT-01
   -> deterministic KPI/query governance
   -> read-only PostgreSQL reporting
   -> result validation
   -> trusted Slack destination resolution
   -> Slack manager report
+  -> delivery audit
 ```
 
 ## Trusted development channel
@@ -23,7 +25,7 @@ Slack app mention
 - Channel ID: `C0BUK581XRN`
 - Trigger event: `app_mention`
 
-The inbound trigger is intentionally scoped to the trusted development reporting channel. The manager message cannot choose a database query or external delivery destination.
+The inbound trigger is scoped to the trusted development reporting channel. The normalization node also enforces `C0BUK581XRN` before handoff, providing a second deterministic channel boundary. The manager message cannot choose a database query or external delivery destination.
 
 ## Import
 
@@ -31,16 +33,20 @@ Import:
 
 `n8n/LUMORA-REVINT-05 _ Slack Request Gateway.json`
 
+The repository export is intentionally inactive and contains no Slack credential binding, signing secret, access token, local n8n instance ID, workflow version ID, or local error-workflow ID.
+
 After import:
 
 1. Open `INT | Slack Manager Request`.
 2. Select the existing Lumora Slack API credential.
 3. Keep Event = `app_mention`.
 4. Keep Channel = `C0BUK581XRN` / `lumora-revint-reports-dev`.
-5. Confirm `INT | Submit Governed Slack Request` points to `LUMORA-REVINT-01 | Manager Request Orchestrator`.
-6. Keep the gateway inactive until the local simulated test passes.
+5. Keep Resolve IDs = false.
+6. Confirm `INT | Submit Governed Slack Request` points to `LUMORA-REVINT-01 | Manager Request Orchestrator`.
+7. If the environment uses the Lumora error workflow, reselect it in workflow settings after import rather than relying on an instance-specific exported workflow ID.
+8. Keep the gateway inactive until the local simulated test and Slack Request URL verification pass.
 
-Slack credentials, tokens, and signing secrets must remain in n8n Credentials and are not stored in this workflow export.
+Slack credentials, tokens, and signing secrets must remain in n8n Credentials and are not stored in the workflow export.
 
 ## Test 1 — local simulated request
 
@@ -48,50 +54,102 @@ This test does not require Slack to reach the local n8n instance.
 
 1. Open the imported gateway.
 2. Run `INT | Test Slack Request`.
-3. `CTX | Build Simulated Slack Event` creates a simulated `app_mention` event.
-4. `CTX | Normalize Slack Request` should output:
+3. `CTX | Build Simulated Slack Event` creates a simulated `app_mention` event for:
+
+```text
+Show me closed won revenue this month
+```
+
+4. `CTX | Normalize Slack Request` should produce a standard request envelope with:
 
 ```json
 {
   "channel": "slack",
   "requester_id": "portfolio_manager_001",
   "requester_name": "portfolio_manager_001",
-  "question": "Show me open pipeline",
+  "question": "Show me closed won revenue this month",
   "source": "slack_app_mention",
   "environment": "development",
   "status": "received"
 }
 ```
 
-5. `INT | Submit Governed Slack Request` should invoke `LUMORA-REVINT-01`.
-6. REVINT-01 must still apply the existing KPI catalogue, approved query resolution, runtime parameter validation, read-only PostgreSQL access, result validation, presentation controls, trusted Slack destination resolution, delivery validation, and audit controls.
+5. The normalization node must reject a payload whose `event.channel` is not `C0BUK581XRN`.
+6. `INT | Submit Governed Slack Request` should invoke `LUMORA-REVINT-01`.
+7. REVINT-01 must still apply the existing KPI catalogue, approved query resolution, runtime parameter validation, read-only PostgreSQL access, result validation, presentation controls, trusted Slack destination resolution, delivery validation, and audit controls.
 
 ## Test 2 — real Slack app mention
 
-Slack Events API delivery requires Slack to be able to reach the trigger endpoint. A localhost-only n8n URL cannot receive Slack HTTP Events API callbacks directly.
+Slack Events API delivery requires Slack to reach the trigger endpoint. A localhost-only n8n URL cannot receive Slack HTTP Events API callbacks directly.
 
-Before the real test:
+For the verified development setup:
 
-1. Provide n8n with a publicly reachable HTTPS webhook endpoint or deploy the workflow behind an approved HTTPS reverse proxy/host.
-2. Do not expose the n8n editor or port `5678` directly to the public internet merely to receive Slack events.
-3. In the Slack app configuration, enable Event Subscriptions and use the production webhook URL provided by the Slack Trigger node as the Request URL.
-4. Subscribe the bot to the `app_mention` event.
-5. Ensure the Slack app is installed in `lumora-revint-reports-dev`.
-6. Keep a Slack signing secret configured in the n8n Slack credential so inbound Slack requests can be authenticated.
-7. Activate/publish `LUMORA-REVINT-05` only after the Request URL is verified.
+1. n8n was exposed through a temporary HTTPS Cloudflare Quick Tunnel for testing.
+2. `N8N_WEBHOOK_URL` was set to the public HTTPS tunnel origin and `N8N_PROXY_HOPS=1` was configured.
+3. The Slack app used for inbound events was the actual `Revenue Intelligence Reporter` app, not the separate n8n-related Slack app.
+4. Socket Mode was disabled so Events API delivery used the HTTP Request URL.
+5. Event Subscriptions was enabled and the Slack Trigger production webhook URL was verified.
+6. The bot subscribed to `app_mention` and had the required `app_mentions:read` scope.
+7. The app was installed in `lumora-revint-reports-dev`.
+8. The Slack signing secret remained in the n8n Slack credential.
+9. `LUMORA-REVINT-05` was published only after URL verification.
 
-Then send a message in the trusted channel such as:
+The Cloudflare Quick Tunnel is a temporary development mechanism. Its hostname can change after restart and should not be treated as a permanent production endpoint.
+
+A verified live request was sent in the trusted channel:
 
 ```text
-@Lumora Revenue Intelligence Show me open pipeline
+@Revenue Intelligence Reporter Show me closed won revenue this month
 ```
 
-The Slack mention markup is removed before the request enters REVINT-01.
+The Slack mention markup was removed before the request entered REVINT-01.
+
+## Live verification result — 2026-09-02
+
+The final restricted-channel test completed end-to-end with a real Slack `app_mention` event.
+
+Verified output included:
+
+```text
+channel = slack
+source = slack_app_mention
+validation_status = valid
+workflow_stage = slack_delivery_succeeded
+external_delivery = true
+delivery_status = sent
+expected_channel_id = C0BUK581XRN
+actual_channel_id = C0BUK581XRN
+sent_text_matches_payload = true
+event_type = slack_delivery_succeeded
+event_status = recorded
+```
+
+The live request used a real Slack requester ID and returned the governed report through the trusted Slack channel. n8n appended its standard attribution line after the approved payload; the delivery validator recorded this as `SLACK_N8N_ATTRIBUTION_APPENDED` while still confirming `sent_text_matches_payload = true`.
+
+## Troubleshooting lesson from live verification
+
+The initial live mentions produced no REVINT-05 execution even though the Request URL verified successfully. The root cause was that Event Subscriptions had been configured on a different Slack app. The bot actually being mentioned was `Revenue Intelligence Reporter`.
+
+A useful diagnostic sequence is:
+
+```text
+real Slack mention exists
+-> confirm correct Slack app owns the mentioned bot
+-> confirm Socket Mode is OFF for HTTP Events API delivery
+-> confirm Event Subscriptions uses the Slack Trigger production URL
+-> confirm app_mention + app_mentions:read
+-> confirm workflow is active
+-> only then inspect downstream REVINT-01
+```
+
+If REVINT-05 never starts, the downstream Revenue Intelligence orchestrator is not yet involved.
 
 ## Security boundary
 
 - Slack is an intake channel, not an authorization layer.
-- Bot-generated Slack messages are rejected by the normalization node to reduce loop risk.
+- The Slack Trigger is restricted to `C0BUK581XRN`.
+- The normalization node independently rejects any event whose channel is not `C0BUK581XRN`.
+- Bot-generated Slack messages are rejected to reduce loop risk.
 - AI interprets intent only; it does not generate executable SQL or authorize queries.
 - Approved deterministic controls decide which KPI/query contract can run.
 - PostgreSQL read-only permissions remain the final reporting-data access boundary.
@@ -101,5 +159,13 @@ The Slack mention markup is removed before the request enters REVINT-01.
 ## Verification status
 
 - Workflow export built: yes
-- Local simulated gateway path: ready for verification after import
-- Real Slack app-mention path: requires reachable HTTPS Slack Events API endpoint and live verification
+- Local simulated gateway path: verified
+- Real Slack Request URL verification: verified
+- Real Slack `app_mention` intake: verified
+- Trusted-channel enforcement: verified
+- REVINT-05 -> REVINT-01 handoff: verified
+- Governed reporting execution: verified
+- Real external Slack delivery: verified
+- Expected vs actual Slack destination validation: verified
+- Delivery success audit: verified
+- Live verification date: 2026-09-02
