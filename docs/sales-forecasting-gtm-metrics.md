@@ -67,6 +67,63 @@ Add `fact_sales_targets.csv` (or `reporting.fact_sales_targets` from PostgreSQL)
 
 Create a Date table and use it for target month, deal closed date and expected close date. Use inactive deal-date relationships with `USERELATIONSHIP` so one date slicer can drive bookings and forecast-period pipeline correctly.
 
+## Date helper columns and calendar
+Create date-only helper columns in `fact_deals` before building the measures:
+
+```DAX
+Created Date =
+DATE(
+    YEAR(fact_deals[created_at]),
+    MONTH(fact_deals[created_at]),
+    DAY(fact_deals[created_at])
+)
+
+Closed Date =
+IF(
+    ISBLANK(fact_deals[closed_at]),
+    BLANK(),
+    DATE(
+        YEAR(fact_deals[closed_at]),
+        MONTH(fact_deals[closed_at]),
+        DAY(fact_deals[closed_at])
+    )
+)
+
+Expected Close Date =
+IF(
+    ISBLANK(fact_deals[Expected Close Date]),
+    BLANK(),
+    DATE(
+        YEAR(fact_deals[Expected Close Date]),
+        MONTH(fact_deals[Expected Close Date]),
+        DAY(fact_deals[Expected Close Date])
+    )
+)
+```
+
+Create and mark a Date table:
+
+```DAX
+Date =
+CALENDAR(
+    DATE(2025, 9, 1),
+    DATE(2026, 11, 30)
+)
+
+Month Start =
+DATE(YEAR('Date'[Date]), MONTH('Date'[Date]), 1)
+
+Month Label =
+FORMAT('Date'[Date], "MMM yyyy")
+```
+
+Relationships:
+- Active: `Date[Month Start]` → `fact_sales_targets[target_month]`
+- Inactive: `Date[Date]` → `fact_deals[Closed Date]`
+- Inactive: `Date[Date]` → `fact_deals[Expected Close Date]`
+
+Use `Month Label` as the page slicer and sort it by `Month Start`.
+
 ## Forecast category calculated column
 ```DAX
 Forecast Category =
@@ -86,7 +143,7 @@ Bookings =
 CALCULATE(
     SUM(fact_deals[amount]),
     fact_deals[outcome] = "Closed Won",
-    USERELATIONSHIP('Date'[Date], fact_deals[closed_date])
+    USERELATIONSHIP('Date'[Date], fact_deals[Closed Date])
 )
 
 Revenue Target =
@@ -96,7 +153,7 @@ Open Pipeline =
 CALCULATE(
     SUM(fact_deals[amount]),
     ISBLANK(fact_deals[outcome]),
-    USERELATIONSHIP('Date'[Date], fact_deals[expected_close_date])
+    USERELATIONSHIP('Date'[Date], fact_deals[Expected Close Date])
 )
 
 Weighted Pipeline =
@@ -106,7 +163,7 @@ CALCULATE(
         fact_deals[amount] * DIVIDE(fact_deals[probability], 100)
     ),
     ISBLANK(fact_deals[outcome]),
-    USERELATIONSHIP('Date'[Date], fact_deals[expected_close_date])
+    USERELATIONSHIP('Date'[Date], fact_deals[Expected Close Date])
 )
 
 Forecast =
@@ -142,7 +199,7 @@ DIVIDE([Bookings], [Won Deals])
 Average Won Sales Cycle Days =
 AVERAGEX(
     FILTER(fact_deals, fact_deals[outcome] = "Closed Won"),
-    DATEDIFF(fact_deals[created_date], fact_deals[closed_date], DAY)
+    DATEDIFF(fact_deals[Created Date], fact_deals[Closed Date], DAY)
 )
 
 Historical Win Rate =
@@ -158,7 +215,7 @@ Open Deal Count =
 CALCULATE(
     COUNTROWS(fact_deals),
     ISBLANK(fact_deals[outcome]),
-    USERELATIONSHIP('Date'[Date], fact_deals[expected_close_date])
+    USERELATIONSHIP('Date'[Date], fact_deals[Expected Close Date])
 )
 
 Sales Velocity =
