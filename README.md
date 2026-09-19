@@ -13,7 +13,7 @@ Production-style Revenue Operations and Business Systems portfolio project for *
 - Least-privilege PostgreSQL runtime roles.
 - Slack, authenticated Form, REST API, and manual manager access.
 - Full 10-entity orchestration with one reporting refresh after the successful batch.
-- Three-page Power BI management dashboard.
+- Three verified Power BI management pages plus a governed Sales Forecasting & GTM Metrics upgrade specification.
 
 ## Architecture
 ```mermaid
@@ -52,6 +52,8 @@ flowchart TD
 ![Pipeline & Sales Performance](evidence/powerbi/02-pipeline-sales-performance.png)
 ![Revenue Operations Health](evidence/powerbi/03-revenue-operations-health.png)
 
+**Next verified page:** Sales Forecasting & GTM Metrics. The governed target table, forecast-ready SQL views, Power BI-ready target CSV, DAX measures, and verified baseline calculations are prepared. The fourth screenshot is intentionally withheld until the page is built and checked in Power BI.
+
 ## Main Workflows
 - `LUMORA-REVINT-01 | Manager Request Orchestrator`
 - `LUMORA-REVINT-06 | Manager Form Gateway`
@@ -65,6 +67,7 @@ flowchart TD
 - [Security & Governance](docs/security.md)
 - [Testing & Verification](docs/testing.md)
 - [Power BI Dashboard](docs/powerbi-dashboard.md)
+- [Sales Forecasting & GTM Metrics Upgrade](docs/sales-forecasting-gtm-metrics.md)
 - [Portfolio Copy](docs/portfolio-copy.md)
 
 ## Links
