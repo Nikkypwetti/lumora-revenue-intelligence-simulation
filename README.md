@@ -13,7 +13,7 @@ Production-style Revenue Operations and Business Systems portfolio project for *
 - Least-privilege PostgreSQL runtime roles.
 - Slack, authenticated Form, REST API, and manual manager access.
 - Full 10-entity orchestration with one reporting refresh after the successful batch.
-- Three verified Power BI management pages plus a governed Sales Forecasting & GTM Metrics upgrade specification.
+- Four verified Power BI management pages, including Sales Forecasting & GTM Metrics.
 
 ## Architecture
 ```mermaid
@@ -41,8 +41,10 @@ flowchart TD
 | Open Deals | 190 |
 | Closed Won Revenue | $3,311,500 |
 | Open Pipeline | $2,902,000 |
+| Weighted Open Pipeline | $1,352,700 |
 | Win Rate | 54.9% |
 | Average Won Deal Size | $14,718 |
+| Average Won Sales Cycle | 50.6 days |
 | Stale Open Deals | 45 |
 | Overdue Follow Ups | 114 |
 | SLA Breaches | 72 |
@@ -51,8 +53,9 @@ flowchart TD
 ![Executive Revenue Overview](evidence/powerbi/01-executive-revenue-overview.png)
 ![Pipeline & Sales Performance](evidence/powerbi/02-pipeline-sales-performance.png)
 ![Revenue Operations Health](evidence/powerbi/03-revenue-operations-health.png)
+![Sales Forecasting & GTM Metrics](evidence/powerbi/04-sales-forecasting-gtm-metrics.png)
 
-**Next verified page:** Sales Forecasting & GTM Metrics. The governed target table, forecast-ready SQL views, Power BI-ready target CSV, DAX measures, and verified baseline calculations are prepared. The fourth screenshot is intentionally withheld until the page is built and checked in Power BI.
+The fourth page is built and verified in Power BI. Its August 2026 snapshot shows **$461,100 forecast**, **$480,000 revenue target**, **96.1% forecast attainment**, **1.83x pipeline coverage**, **28.6% period win rate**, and **$10,526/day sales velocity**.
 
 ## Main Workflows
 - `LUMORA-REVINT-01 | Manager Request Orchestrator`
@@ -67,7 +70,7 @@ flowchart TD
 - [Security & Governance](docs/security.md)
 - [Testing & Verification](docs/testing.md)
 - [Power BI Dashboard](docs/powerbi-dashboard.md)
-- [Sales Forecasting & GTM Metrics Upgrade](docs/sales-forecasting-gtm-metrics.md)
+- [Sales Forecasting & GTM Metrics](docs/sales-forecasting-gtm-metrics.md)
 - [Portfolio Copy](docs/portfolio-copy.md)
 
 ## Links
